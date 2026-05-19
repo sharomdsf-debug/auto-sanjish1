@@ -1,45 +1,81 @@
-name: Scrape Currency Rates
+name: AI Bank Scraper
 
 on:
-  schedule:
-    - cron: '0 6 * * *'
   workflow_dispatch:
+
+  schedule:
+    - cron: "10 0 * * *"
+    - cron: "10 12 * * *"
+
+permissions:
+  contents: write
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
 
+    timeout-minutes: 360
+
+    env:
+      OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
+
     steps:
-      - name: Checkout
+
+      # =====================================
+      # CHECKOUT
+      # =====================================
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Python насб
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
+      # =====================================
+      # PYTHON
+      # =====================================
 
-      - name: Китобхонаҳо насб
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # =====================================
+      # INSTALL REQUIREMENTS
+      # =====================================
+
+      - name: Install requirements
         run: |
-          pip install playwright requests
+          pip install requests playwright
+
+      # =====================================
+      # INSTALL CHROMIUM
+      # =====================================
+
+      - name: Install Chromium
+        run: |
           playwright install chromium
           playwright install-deps chromium
 
-      - name: Alif скрейп
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          WEBSITE_URL: "https://alif.tj"
-        run: python banks/alif/main.py
+      # =====================================
+      # RUN SCRAPER
+      # =====================================
 
-      - name: Amonatbonk скрейп
-        run: python banks/amonatbonk/main.py
-
-      - name: Eskhata скрейп
-        run: python banks/eskhata/main.py
-
-      - name: Натиҷаро commit кун
+      - name: Run AI scraper
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          git add banks/*/results/output.json
-          git commit -m "✅ Қурбҳо навшуданд: $(date)" || echo "Тағйирот нест"
+          python main.py
+
+      # =====================================
+      # COMMIT JSON
+      # =====================================
+
+      - name: Commit updated JSON
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+
+          git add *.json
+          git add raw/*.json
+
+          git commit -m "🤖 Auto update currency rates" || echo "No changes"
+
+          git pull --rebase
+
           git push
