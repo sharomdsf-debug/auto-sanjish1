@@ -1,203 +1,83 @@
-import requests
-import json
 import os
-import time
+import json
+import re
+from playwright.sync_api import sync_playwright
 
-# =========================================================
-# API KEYS
-# =========================================================
+OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
+URL = os.environ.get("WEBSITE_URL", "https://alif.tj")
 
-FIRECRAWL_API = os.getenv("FIRECRAWL_API")
-OPENROUTER_API = os.getenv("OPENROUTER_API")
+def scrape_website(url):
+    print("🌐 Браузер кушода мешавад...")
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        
+        print(f"📄 Саҳифа бор мешавад: {url}")
+        page.goto(url, wait_until="networkidle")
+        
+        # Ҷадвали асъор пайдо шавад
+        print("⏳ Ҷадвал интизор...")
+        page.wait_for_selector("table", timeout=15000)
+        
+        # Матни ҷадвалро гиред
+        table = page.query_selector("table")
+        text = table.inner_text()
+        
+        browser.close()
+        
+        print("✅ Матн гирифта шуд:")
+        print(text)
+        
+        return text
 
-# =========================================================
-# CONFIG
-# =========================================================
+def extract_prices(text):
+    import requests
+    
+    print("🤖 DeepSeek таҳлил мекунад...")
+    
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "deepseek/deepseek-v4-flash:free",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": f"Аз ин матн қурби асъорро ҷудо кун:\n\n{text}"
+                }
+            ],
+            "temperature": 0,
+            "max_tokens": 500
+        },
+        timeout=60
+    )
+    
+    data = response.json()
+    return data["choices"][0]["message"]["content"]
 
-URL = "https://alif.tj/ru"
+def save_results(text, answer):
+    os.makedirs("results", exist_ok=True)
+    
+    result = {
+        "raw_table": text,
+        "ai_answer": answer
+    }
+    
+    with open("results/output.json", "w", encoding="utf-8") as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    
+    print("💾 Натиҷа сабт шуд!")
 
-MODEL = "deepseek/deepseek-v4-flash:free"
-
-PROMPT = """
-Аз ин матни калон танҳо қурби асъорро пайдо кун.
-
-Фақат ҳамон қисми қурбҳоро навис.
-
-Шарҳ надеҳ.
-JSON надеҳ.
-"""
-
-# =========================================================
-# SCRAPE WEBSITE
-# =========================================================
-
-print("=" * 80)
-print("SCRAPING")
-print("=" * 80)
-
-response = requests.post(
-    "https://api.firecrawl.dev/v1/scrape",
-    headers={
-        "Authorization": f"Bearer {FIRECRAWL_API}",
-        "Content-Type": "application/json"
-    },
-    json={
-        "url": URL,
-        "formats": ["markdown"],
-
-        # ҚУРБ dynamic load мешавад
-        "waitFor": 10000,
-
-        # ҲАМАИ контентро гир
-        "onlyMainContent": False
-    },
-    timeout=300
-)
-
-print("STATUS:")
-print(response.status_code)
-
-data = response.json()
-
-markdown = data["data"]["markdown"]
-
-print("=" * 80)
-print("MARKDOWN SIZE")
-print("=" * 80)
-
-print(len(markdown))
-
-# =========================================================
-# SAVE FULL TEXT
-# =========================================================
-
-with open("full_markdown.txt", "w", encoding="utf-8") as f:
-    f.write(markdown)
-
-print("FULL MARKDOWN SAVED")
-
-# =========================================================
-# ASK AI
-# =========================================================
-
-print("=" * 80)
-print("ASKING AI")
-print("=" * 80)
-
-answer = None
-
-for attempt in range(1000):
-
-    print(f"ATTEMPT {attempt + 1}")
-
-    try:
-
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": MODEL,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": PROMPT + "\n\n" + markdown
-                    }
-                ],
-                "temperature": 0,
-                "max_tokens": 500
-            },
-            timeout=300
-        )
-
-        print("STATUS:")
-        print(response.status_code)
-
-        raw = response.text
-
-        print("=" * 80)
-        print("RAW RESPONSE")
-        print("=" * 80)
-
-        print(raw[:5000])
-
-        data = json.loads(raw)
-
-        # =================================================
-        # RATE LIMIT
-        # =================================================
-
-        if "choices" not in data:
-
-            print("=" * 80)
-            print("NO CHOICES")
-            print("=" * 80)
-
-            print(data)
-
-            print("WAITING 30 SECONDS...")
-
-            time.sleep(30)
-
-            continue
-
-        # =================================================
-        # GET ANSWER
-        # =================================================
-
-        answer = data["choices"][0]["message"].get("content")
-
-        # AI баъзан content = null медиҳад
-        if not answer:
-
-            print("EMPTY ANSWER")
-
-            print("WAITING 30 SECONDS...")
-
-            time.sleep(30)
-
-            continue
-
-        print("=" * 80)
-        print("AI ANSWER")
-        print("=" * 80)
-
-        print(answer)
-
-        # =================================================
-        # SAVE ANSWER
-        # =================================================
-
-        with open("answer.txt", "w", encoding="utf-8") as f:
-            f.write(answer)
-
-        print("ANSWER SAVED -> answer.txt")
-
-        break
-
-    except Exception as e:
-
-        print("=" * 80)
-        print("ERROR")
-        print("=" * 80)
-
-        print(e)
-
-        print("WAITING 30 SECONDS...")
-
-        time.sleep(30)
-
-# =========================================================
-# FINAL
-# =========================================================
-
-print("=" * 80)
-print("DONE")
-print("=" * 80)
-
-if answer:
+if __name__ == "__main__":
+    text = scrape_website(URL)
+    answer = extract_prices(text)
+    
+    print("=" * 50)
+    print("НАТИҶА:")
     print(answer)
-else:
-    print("NO ANSWER")
+    
+    save_results(text, answer)
