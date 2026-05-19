@@ -3,6 +3,8 @@ import os
 import json
 import time
 import copy
+import re
+from datetime import datetime
 
 # =========================================================
 # API
@@ -12,12 +14,11 @@ FIRECRAWL_API = os.getenv("FIRECRAWL_API")
 OPENROUTER_API = os.getenv("OPENROUTER_API")
 
 # =========================================================
-# MODELS
+# MODEL
 # =========================================================
 
 MODELS = [
-    "openai/gpt-oss-120b:free",
-    "deepseek/deepseek-v3-base:free"
+    "openai/gpt-oss-120b:free"
 ]
 
 # =========================================================
@@ -35,11 +36,11 @@ BANK = {
 # =========================================================
 
 VALID_RANGES = {
-    "USD": (5.0, 20.0),
-    "EUR": (5.0, 25.0),
-    "RUB": (0.01, 2.0),
-    "CNY": (0.5, 5.0),
-    "KZT": (0.001, 0.5)
+    "USD": (8.0, 12.0),
+    "EUR": (8.0, 14.0),
+    "RUB": (0.08, 0.25),
+    "CNY": (1.0, 2.5),
+    "KZT": (0.010, 0.060)
 }
 
 CURRENCIES = list(VALID_RANGES.keys())
@@ -60,11 +61,7 @@ def validate(currency, value):
 
     try:
 
-        num = float(
-            str(value)
-            .replace(",", ".")
-            .replace(" ", "")
-        )
+        num = float(str(value).replace(",", "."))
 
         lo, hi = VALID_RANGES[currency]
 
@@ -125,9 +122,9 @@ def scrape(url):
 
     for attempt in range(3):
 
-        print(f"\nATTEMPT {attempt+1}/3")
-
         try:
+
+            print(f"\nATTEMPT {attempt+1}/3")
 
             response = requests.post(
                 "https://api.firecrawl.dev/v1/scrape",
@@ -139,300 +136,205 @@ def scrape(url):
                     "url": url,
                     "formats": ["markdown"],
                     "onlyMainContent": False,
-                    "waitFor": 10000
+                    "waitFor": 15000
                 },
-                timeout=120
+                timeout=180
             )
 
             print("\nSTATUS:")
             print(response.status_code)
 
-            if response.status_code != 200:
-
-                print("\nBAD STATUS")
-
-                time.sleep(5)
-
-                continue
-
             data = response.json()
 
-            markdown = (
-                data
-                .get("data", {})
-                .get("markdown", "")
+            markdown = data.get(
+                "data",
+                {}
+            ).get(
+                "markdown",
+                ""
             )
 
-            if not markdown:
+            if len(markdown) > 1000:
 
-                print("\nEMPTY MARKDOWN")
+                print("\nSCRAPE SUCCESS")
 
-                time.sleep(5)
+                print("\nMARKDOWN SIZE:")
+                print(len(markdown))
 
-                continue
+                with open(
+                    "full_markdown.txt",
+                    "w",
+                    encoding="utf-8"
+                ) as f:
+                    f.write(markdown)
 
-            print("\nSCRAPE SUCCESS")
+                print("\nFULL WEBSITE SAVED -> full_markdown.txt")
 
-            print(f"\nMARKDOWN SIZE: {len(markdown)}")
-
-            with open(
-                "full_markdown.txt",
-                "w",
-                encoding="utf-8"
-            ) as f:
-
-                f.write(markdown)
-
-            print(
-                "\nFULL WEBSITE SAVED -> full_markdown.txt"
-            )
-
-            return markdown
+                return markdown
 
         except Exception as e:
 
             print("\nSCRAPE ERROR:")
             print(str(e))
 
-            time.sleep(5)
+        time.sleep(5)
 
     return ""
 
 # =========================================================
-# AI STAGE 1
+# FIND SECTION
 # =========================================================
 
-SECTION_PROMPT = """
-You are extracting ONLY the REAL currency exchange section from a bank website.
-
-STRICT RULES:
-- Return ONLY raw text
-- DO NOT explain
-- DO NOT summarize
-- DO NOT output JSON
-
-IMPORTANT:
-Find REAL exchange rates.
-
-The text MUST contain things like:
-
-| USD | 9.25 | 9.35 |
-| RUB | 0.12 | 0.13 |
-| EUR | 10.70 | 10.91 |
-
-IGNORE:
-- news
-- menus
-- cards
-- loans
-- commissions
-- limits
-- banners
-
-IMPORTANT:
-Return ONLY the exchange rate section.
-
-TEXT:
-"""
-
 def find_currency_section(markdown):
-
-    # =====================================================
-    # VERY IMPORTANT
-    # =====================================================
-
-    markdown = markdown[:40000]
 
     print("\n" + "=" * 80)
     print("SEARCHING CURRENCY SECTION")
     print("=" * 80)
 
-    for model in MODELS:
+    keywords = [
+        "Асъор",
+        "Харид",
+        "Фурӯш",
+        "USD",
+        "EUR",
+        "RUB",
+        "Обмен валют",
+        "Курс валют"
+    ]
 
-        print("\n" + "=" * 80)
-        print(f"SECTION MODEL: {model}")
-        print("=" * 80)
+    for keyword in keywords:
 
-        for attempt in range(3):
+        pos = markdown.find(keyword)
 
-            print(f"\nMODEL ATTEMPT {attempt+1}/3")
+        if pos != -1:
 
-            try:
+            start = max(0, pos - 2000)
+            end = min(len(markdown), pos + 6000)
 
-                response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization":
-                            f"Bearer {OPENROUTER_API}",
-                        "Content-Type":
-                            "application/json"
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content":
-                                    SECTION_PROMPT
-                                    + "\n\n"
-                                    + markdown
-                            }
-                        ],
-                        "temperature": 0,
-                        "max_tokens": 2000
-                    },
-                    timeout=180
-                )
+            section = markdown[start:end]
 
-                data = response.json()
+            print("\nFOUND KEYWORD:")
+            print(keyword)
 
-                print("\nOPENROUTER RESPONSE:")
-                print(json.dumps(data)[:1500])
+            print("\nSECTION SIZE:")
+            print(len(section))
 
-                if "choices" not in data:
+            with open(
+                "currency_section.txt",
+                "w",
+                encoding="utf-8"
+            ) as f:
+                f.write(section)
 
-                    print("\nNO CHOICES")
+            print("\nSECTION SAVED -> currency_section.txt")
 
-                    time.sleep(5)
-
-                    continue
-
-                text = (
-                    data["choices"][0]
-                    ["message"]
-                    ["content"]
-                )
-
-                print("\nSECTION RESULT:\n")
-                print(text[:5000])
-
-                if (
-                    "USD" in text
-                    or "EUR" in text
-                    or "RUB" in text
-                ):
-
-                    with open(
-                        "currency_section.txt",
-                        "w",
-                        encoding="utf-8"
-                    ) as f:
-
-                        f.write(text)
-
-                    print(
-                        "\nSECTION SAVED -> currency_section.txt"
-                    )
-
-                    return text
-
-            except Exception as e:
-
-                print("\nSECTION ERROR:")
-                print(str(e))
-
-            time.sleep(5)
-
-    # =====================================================
-    # FALLBACK
-    # =====================================================
+            return section
 
     print("\nFALLBACK TO RAW MARKDOWN")
 
-    return markdown[:40000]
+    return markdown
 
 # =========================================================
-# AI STAGE 2
+# REGEX EXTRACT
+# =========================================================
+
+def regex_extract(section):
+
+    print("\n" + "=" * 80)
+    print("REGEX EXTRACTION")
+    print("=" * 80)
+
+    result = copy.deepcopy(EMPTY)
+
+    patterns = {
+        "USD": r"USD\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
+        "EUR": r"EUR\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
+        "RUB": r"RUB\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
+        "CNY": r"CNY\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
+        "KZT": r"KZT\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)"
+    }
+
+    for currency, pattern in patterns.items():
+
+        match = re.search(
+            pattern,
+            section,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            buy = match.group(1)
+            sell = match.group(2)
+
+            result[currency]["buy"] = validate(
+                currency,
+                buy
+            )
+
+            result[currency]["sell"] = validate(
+                currency,
+                sell
+            )
+
+            print(f"\nFOUND {currency}")
+            print(f"BUY: {buy}")
+            print(f"SELL: {sell}")
+
+    return result
+
+# =========================================================
+# AI EXTRACT
 # =========================================================
 
 JSON_PROMPT = """
-Extract REAL bank exchange rates against TJS.
+Extract REAL exchange rates.
 
-STRICT RULES:
-- Return ONLY JSON
-- Never explain
-- Never invent values
-- Ignore years
-- Ignore percentages
-- Ignore limits
-- Ignore commissions
-- Ignore phone numbers
-
-IMPORTANT:
-Extract ONLY REAL currency table values.
-
-IMPORTANT:
-If currency missing -> "0.0000"
-
-OUTPUT FORMAT:
+Return ONLY JSON.
 
 {
-  "USD": {
-    "buy":"0.0000",
-    "sell":"0.0000"
-  },
-  "EUR": {
-    "buy":"0.0000",
-    "sell":"0.0000"
-  },
-  "RUB": {
-    "buy":"0.0000",
-    "sell":"0.0000"
-  },
-  "CNY": {
-    "buy":"0.0000",
-    "sell":"0.0000"
-  },
-  "KZT": {
-    "buy":"0.0000",
-    "sell":"0.0000"
-  }
+  "USD": {"buy":"0.0000","sell":"0.0000"},
+  "EUR": {"buy":"0.0000","sell":"0.0000"},
+  "RUB": {"buy":"0.0000","sell":"0.0000"},
+  "CNY": {"buy":"0.0000","sell":"0.0000"},
+  "KZT": {"buy":"0.0000","sell":"0.0000"}
 }
 
 TEXT:
 """
 
-def extract_rates(text):
+def ai_extract(section):
+
+    print("\n" + "=" * 80)
+    print("AI EXTRACTION")
+    print("=" * 80)
 
     best = copy.deepcopy(EMPTY)
 
-    print("\n" + "=" * 80)
-    print("EXTRACTING RATES")
-    print("=" * 80)
-
     for model in MODELS:
 
-        print("\n" + "=" * 80)
-        print(f"EXTRACT MODEL: {model}")
-        print("=" * 80)
+        print(f"\nMODEL: {model}")
 
         for attempt in range(3):
-
-            print(f"\nEXTRACT ATTEMPT {attempt+1}/3")
 
             try:
 
                 response = requests.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={
-                        "Authorization":
-                            f"Bearer {OPENROUTER_API}",
-                        "Content-Type":
-                            "application/json"
+                        "Authorization": f"Bearer {OPENROUTER_API}",
+                        "Content-Type": "application/json"
                     },
                     json={
                         "model": model,
                         "messages": [
                             {
                                 "role": "user",
-                                "content":
-                                    JSON_PROMPT
-                                    + "\n\n"
-                                    + text
+                                "content": JSON_PROMPT + section
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 700
+                        "max_tokens": 300
                     },
                     timeout=180
                 )
@@ -440,23 +342,17 @@ def extract_rates(text):
                 data = response.json()
 
                 print("\nOPENROUTER RESPONSE:")
-                print(json.dumps(data)[:1500])
+                print(json.dumps(data)[:1000])
 
                 if "choices" not in data:
-
-                    print("\nNO CHOICES")
-
-                    time.sleep(5)
-
                     continue
 
-                raw = (
-                    data["choices"][0]
-                    ["message"]
-                    ["content"]
-                )
+                raw = data["choices"][0]["message"]["content"]
 
-                print("\nRAW AI:\n")
+                if raw is None:
+                    continue
+
+                print("\nRAW AI:")
                 print(raw)
 
                 raw = raw.replace("```json", "")
@@ -466,9 +362,6 @@ def extract_rates(text):
                 end = raw.rfind("}") + 1
 
                 if start == -1:
-
-                    print("\nNO JSON FOUND")
-
                     continue
 
                 parsed = json.loads(raw[start:end])
@@ -482,12 +375,12 @@ def extract_rates(text):
                 if found > count_found(best):
                     best = cleaned
 
-                if found >= 1:
+                if found >= 3:
                     return cleaned
 
             except Exception as e:
 
-                print("\nEXTRACT ERROR:")
+                print("\nAI ERROR:")
                 print(str(e))
 
             time.sleep(5)
@@ -495,51 +388,60 @@ def extract_rates(text):
     return best
 
 # =========================================================
-# PROCESS BANK
+# MAIN
 # =========================================================
 
-def process_bank(bank):
+print("\n" + "=" * 80)
+print(BANK["name"])
+print("=" * 80)
 
-    print("\n" + "=" * 80)
-    print(bank["name"])
-    print("=" * 80)
+markdown = scrape(BANK["website"])
 
-    markdown = scrape(bank["website"])
+if not markdown:
 
-    if not markdown:
+    print("\nSCRAPE FAILED")
+    exit()
 
-        return {
-            "bank_name": bank["name"],
-            "bank_id": bank["id"],
-            "success": False,
-            "currencies": copy.deepcopy(EMPTY)
-        }
+section = find_currency_section(markdown)
 
-    section = find_currency_section(markdown)
-
-    print(f"\nSECTION SIZE: {len(section)}")
-
-    currencies = extract_rates(section)
-
-    print(f"\nFINAL FOUND: {count_found(currencies)}/5")
-
-    return {
-        "bank_name": bank["name"],
-        "bank_id": bank["id"],
-        "success": True,
-        "currencies": currencies,
-        "found": count_found(currencies)
-    }
+print("\nSECTION SIZE:")
+print(len(section))
 
 # =========================================================
-# RUN
+# TRY REGEX FIRST
 # =========================================================
 
-final = process_bank(BANK)
+currencies = regex_extract(section)
+
+found = count_found(currencies)
 
 # =========================================================
-# SAVE RESULT
+# IF REGEX FAILED -> AI
 # =========================================================
+
+if found < 3:
+
+    print("\nREGEX NOT ENOUGH -> USING AI")
+
+    ai_result = ai_extract(section)
+
+    if count_found(ai_result) > found:
+        currencies = ai_result
+
+# =========================================================
+# FINAL
+# =========================================================
+
+final = {
+    "bank_name": BANK["name"],
+    "bank_id": BANK["id"],
+    "success": True,
+    "currencies": currencies,
+    "found": count_found(currencies),
+    "updated": datetime.now().strftime(
+        "%d.%m.%Y %H:%M"
+    )
+}
 
 with open(
     "result.json",
@@ -554,18 +456,20 @@ with open(
         indent=2
     )
 
-# =========================================================
-# FINAL
-# =========================================================
-
 print("\n" + "=" * 80)
+print("FINAL RESULT:")
+print("=" * 80)
 
-print("FINAL RESULT:\n")
-
-print(json.dumps(final, ensure_ascii=False, indent=2))
+print(
+    json.dumps(
+        final,
+        ensure_ascii=False,
+        indent=2
+    )
+)
 
 print("\nRESULT SAVED -> result.json")
 
+print("\n" + "=" * 80)
+print("DONE")
 print("=" * 80)
-
-print("\nDONE")
