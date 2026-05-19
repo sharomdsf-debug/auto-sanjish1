@@ -28,7 +28,7 @@ jobs:
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           WEBSITE_URL: "https://alif.tj"
-        run: python scrape.py
+        run: python main.py
 
       - name: Натиҷаро commit кун
         run: |
