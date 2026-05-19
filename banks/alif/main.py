@@ -1,11 +1,11 @@
 import requests
-import json
 import os
+import json
 import time
 import copy
 
 # =========================================================
-# API KEYS
+# API
 # =========================================================
 
 FIRECRAWL_API = os.getenv("FIRECRAWL_API")
@@ -22,26 +22,14 @@ MODELS = [
 ]
 
 # =========================================================
-# BANK INFO
+# BANK
 # =========================================================
 
-BANK_NAME = "Алиф Бонк"
-
-BANK_ID = "alif"
-
-BANK_URL = "https://alif.tj/ru"
-
-# =========================================================
-# SETTINGS
-# =========================================================
-
-WAIT_FOR = 10000
-
-TIMEOUT = 60
-
-MAX_RETRIES = 3
-
-CHUNK_SIZE = 5000
+BANK = {
+    "name": "Алиф Бонк",
+    "id": "alif",
+    "website": "https://alif.tj/ru"
+}
 
 # =========================================================
 # VALIDATION
@@ -50,7 +38,7 @@ CHUNK_SIZE = 5000
 VALID_RANGES = {
     "USD": (5.0, 20.0),
     "EUR": (5.0, 25.0),
-    "RUB": (0.01, 1.0),
+    "RUB": (0.01, 2.0),
     "CNY": (0.5, 5.0),
     "KZT": (0.001, 0.5)
 }
@@ -126,27 +114,17 @@ def count_found(data):
 
     return total
 
-
-def split_chunks(text, size):
-
-    return [
-        text[i:i+size]
-        for i in range(0, len(text), size)
-    ]
-
 # =========================================================
-# SCRAPE
+# FIRECRAWL
 # =========================================================
 
-def scrape_full_website():
+def scrape(url):
 
     print("\n" + "=" * 80)
-    print("SCRAPING FULL WEBSITE")
+    print(f"SCRAPING: {url}")
     print("=" * 80)
 
-    for attempt in range(1, MAX_RETRIES + 1):
-
-        print(f"\nATTEMPT {attempt}/{MAX_RETRIES}")
+    for attempt in range(3):
 
         try:
 
@@ -157,12 +135,12 @@ def scrape_full_website():
                     "Content-Type": "application/json"
                 },
                 json={
-                    "url": BANK_URL,
+                    "url": url,
                     "formats": ["markdown"],
                     "onlyMainContent": False,
-                    "waitFor": WAIT_FOR
+                    "waitFor": 10000
                 },
-                timeout=TIMEOUT
+                timeout=60
             )
 
             print("\nSTATUS:")
@@ -184,11 +162,11 @@ def scrape_full_website():
 
             if not markdown:
 
+                print("\nEMPTY MARKDOWN")
+
                 time.sleep(5)
 
                 continue
-
-            print("\nSCRAPE SUCCESS")
 
             print(f"\nMARKDOWN SIZE: {len(markdown)}")
 
@@ -217,55 +195,50 @@ def scrape_full_website():
 
 # =========================================================
 # AI STAGE 1
-# FIND BEST CHUNK
 # =========================================================
 
 SECTION_PROMPT = """
-Find ONLY text containing REAL exchange rates.
+You are extracting ONLY the exchange rate section from a bank website.
 
 IMPORTANT:
 - Return ONLY raw text
-- No explanations
-- No JSON
-- Ignore menus
-- Ignore banners
-- Ignore loans
-- Ignore cards
-- Ignore commissions
-- Ignore limits
+- DO NOT explain
+- DO NOT summarize
+- DO NOT output JSON
 
-Find:
+IGNORE:
+- menus
+- contacts
+- news
+- cards
+- loans
+- commissions
+- limits
+
+IMPORTANT:
+Find text containing:
 USD
 EUR
 RUB
 CNY
 KZT
 
-IMPORTANT:
-Return ONLY section with REAL numeric rates.
+Return maximum 4000 characters.
 
 TEXT:
 """
 
 def find_currency_section(markdown):
 
-    chunks = split_chunks(markdown, CHUNK_SIZE)
+    markdown = markdown[:10000]
 
-    print("\n" + "=" * 80)
-    print(f"TOTAL CHUNKS: {len(chunks)}")
-    print("=" * 80)
-
-    best_section = ""
-
-    for chunk_index, chunk in enumerate(chunks):
+    for model in MODELS:
 
         print("\n" + "=" * 80)
-        print(f"CHECKING CHUNK {chunk_index+1}/{len(chunks)}")
+        print(f"SECTION MODEL: {model}")
         print("=" * 80)
 
-        for model in MODELS:
-
-            print(f"\nMODEL: {model}")
+        for attempt in range(2):
 
             try:
 
@@ -283,11 +256,12 @@ def find_currency_section(markdown):
                             {
                                 "role": "user",
                                 "content":
-                                    SECTION_PROMPT + chunk
+                                    SECTION_PROMPT
+                                    + markdown
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 800
+                        "max_tokens": 1200
                     },
                     timeout=120
                 )
@@ -307,24 +281,9 @@ def find_currency_section(markdown):
                 )
 
                 print("\nSECTION RESULT:\n")
-                print(text[:2000])
+                print(text[:3000])
 
-                # =====================================
-                # CHECK CURRENCIES
-                # =====================================
-
-                found = 0
-
-                for cur in CURRENCIES:
-
-                    if cur in text.upper():
-                        found += 1
-
-                print(f"\nFOUND CURRENCIES: {found}")
-
-                if found >= 2:
-
-                    best_section = text
+                if len(text) > 100:
 
                     with open(
                         "currency_section.txt",
@@ -345,13 +304,18 @@ def find_currency_section(markdown):
                 print("\nSECTION ERROR:")
                 print(str(e))
 
-            time.sleep(3)
+            time.sleep(5)
 
-    return best_section
+    # =====================================================
+    # FALLBACK
+    # =====================================================
+
+    print("\nFALLBACK TO RAW MARKDOWN")
+
+    return markdown[:10000]
 
 # =========================================================
 # AI STAGE 2
-# EXTRACT JSON
 # =========================================================
 
 JSON_PROMPT = """
@@ -361,10 +325,11 @@ STRICT RULES:
 - Return ONLY JSON
 - Never explain
 - Never invent values
-- Ignore limits
 - Ignore percentages
-- Ignore phone numbers
+- Ignore limits
+- Ignore commissions
 - Ignore years
+- Ignore phone numbers
 
 IMPORTANT:
 If currency missing -> "0.0000"
@@ -372,38 +337,19 @@ If currency missing -> "0.0000"
 FORMAT:
 
 {
-  "USD": {
-    "buy": "0.0000",
-    "sell": "0.0000"
-  },
-  "EUR": {
-    "buy": "0.0000",
-    "sell": "0.0000"
-  },
-  "RUB": {
-    "buy": "0.0000",
-    "sell": "0.0000"
-  },
-  "CNY": {
-    "buy": "0.0000",
-    "sell": "0.0000"
-  },
-  "KZT": {
-    "buy": "0.0000",
-    "sell": "0.0000"
-  }
+  "USD": {"buy":"0.0000","sell":"0.0000"},
+  "EUR": {"buy":"0.0000","sell":"0.0000"},
+  "RUB": {"buy":"0.0000","sell":"0.0000"},
+  "CNY": {"buy":"0.0000","sell":"0.0000"},
+  "KZT": {"buy":"0.0000","sell":"0.0000"}
 }
 
 TEXT:
 """
 
-def extract_rates(section):
+def extract_rates(text):
 
     best = copy.deepcopy(EMPTY)
-
-    if not section:
-
-        return best
 
     for model in MODELS:
 
@@ -411,78 +357,80 @@ def extract_rates(section):
         print(f"EXTRACT MODEL: {model}")
         print("=" * 80)
 
-        try:
+        for attempt in range(3):
 
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization":
-                        f"Bearer {OPENROUTER_API}",
-                    "Content-Type":
-                        "application/json"
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content":
-                                JSON_PROMPT + section
-                        }
-                    ],
-                    "temperature": 0,
-                    "max_tokens": 500
-                },
-                timeout=120
-            )
+            try:
 
-            data = response.json()
+                response = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization":
+                            f"Bearer {OPENROUTER_API}",
+                        "Content-Type":
+                            "application/json"
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content":
+                                    JSON_PROMPT + text
+                            }
+                        ],
+                        "temperature": 0,
+                        "max_tokens": 500
+                    },
+                    timeout=120
+                )
 
-            print("\nOPENROUTER RESPONSE:")
-            print(json.dumps(data)[:1000])
+                data = response.json()
 
-            if "choices" not in data:
-                continue
+                print("\nOPENROUTER RESPONSE:")
+                print(json.dumps(data)[:1000])
 
-            raw = (
-                data["choices"][0]
-                ["message"]
-                ["content"]
-            )
+                if "choices" not in data:
+                    continue
 
-            print("\nRAW AI:\n")
-            print(raw)
+                raw = (
+                    data["choices"][0]
+                    ["message"]
+                    ["content"]
+                )
 
-            raw = raw.replace("```json", "")
-            raw = raw.replace("```", "")
+                print("\nRAW AI:\n")
+                print(raw)
 
-            start = raw.find("{")
+                raw = raw.replace("```json", "")
+                raw = raw.replace("```", "")
 
-            end = raw.rfind("}") + 1
+                start = raw.find("{")
 
-            if start == -1:
-                continue
+                end = raw.rfind("}") + 1
 
-            parsed = json.loads(raw[start:end])
+                if start == -1:
+                    continue
 
-            cleaned = clean_json(parsed)
+                parsed = json.loads(raw[start:end])
 
-            found = count_found(cleaned)
+                cleaned = clean_json(parsed)
 
-            print(f"\nFOUND: {found}/5")
+                found = count_found(cleaned)
 
-            if found > count_found(best):
-                best = cleaned
+                print(f"\nFOUND: {found}/5")
 
-            if found >= 2:
-                return cleaned
+                if found > count_found(best):
+                    best = cleaned
 
-        except Exception as e:
+                if found >= 1:
+                    return cleaned
 
-            print("\nEXTRACT ERROR:")
-            print(str(e))
+            except Exception as e:
 
-        time.sleep(3)
+                print("\nEXTRACT ERROR:")
+                print(str(e))
+
+            time.sleep(5)
 
     return best
 
@@ -491,16 +439,16 @@ def extract_rates(section):
 # =========================================================
 
 print("\n" + "=" * 80)
-print(BANK_NAME)
+print(BANK["name"])
 print("=" * 80)
 
-markdown = scrape_full_website()
+markdown = scrape(BANK["website"])
 
 if not markdown:
 
     final = {
-        "bank_name": BANK_NAME,
-        "bank_id": BANK_ID,
+        "bank_name": BANK["name"],
+        "bank_id": BANK["id"],
         "success": False,
         "currencies": copy.deepcopy(EMPTY)
     }
@@ -509,15 +457,17 @@ else:
 
     section = find_currency_section(markdown)
 
+    print(f"\nSECTION SIZE: {len(section)}")
+
     currencies = extract_rates(section)
 
+    print(f"\nFINAL FOUND: {count_found(currencies)}/5")
+
     final = {
-        "bank_name": BANK_NAME,
-        "bank_id": BANK_ID,
+        "bank_name": BANK["name"],
+        "bank_id": BANK["id"],
         "success": True,
-        "currencies": currencies,
-        "found": count_found(currencies),
-        "timestamp": int(time.time())
+        "currencies": currencies
     }
 
 # =========================================================
