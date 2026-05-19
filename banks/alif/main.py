@@ -2,9 +2,10 @@ import requests
 import json
 import os
 import time
+import re
 
 # =========================================================
-# API KEYS
+# API
 # =========================================================
 
 FIRECRAWL_API = os.getenv("FIRECRAWL_API")
@@ -21,17 +22,13 @@ BANK = {
 }
 
 # =========================================================
-# MODELS
+# MODEL
 # =========================================================
 
-MODELS = [
-    "openai/gpt-oss-120b:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "mistralai/mistral-7b-instruct:free"
-]
+MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 # =========================================================
-# EMPTY JSON
+# EMPTY
 # =========================================================
 
 EMPTY = {
@@ -43,7 +40,7 @@ EMPTY = {
 }
 
 # =========================================================
-# FIRECRAWL SCRAPE
+# SCRAPE
 # =========================================================
 
 def scrape():
@@ -52,149 +49,164 @@ def scrape():
     print(f"SCRAPING: {BANK['website']}")
     print("=" * 80)
 
-    response = requests.post(
-        "https://api.firecrawl.dev/v1/scrape",
-        headers={
-            "Authorization": f"Bearer {FIRECRAWL_API}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "url": BANK["website"],
-            "formats": ["markdown"],
-            "onlyMainContent": False,
-            "waitFor": 10000
-        },
-        timeout=180
-    )
+    for attempt in range(3):
 
-    print("\nSTATUS:")
-    print(response.status_code)
+        print(f"\nATTEMPT {attempt+1}/3")
 
-    data = response.json()
+        try:
 
-    markdown = data.get("data", {}).get("markdown", "")
+            response = requests.post(
+                "https://api.firecrawl.dev/v1/scrape",
+                headers={
+                    "Authorization": f"Bearer {FIRECRAWL_API}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "url": BANK["website"],
+                    "formats": ["markdown"],
+                    "onlyMainContent": False,
+                    "waitFor": 10000
+                },
+                timeout=180
+            )
 
-    print("\nMARKDOWN SIZE:")
-    print(len(markdown))
+            print("\nSTATUS:")
+            print(response.status_code)
 
-    with open("full_markdown.txt", "w", encoding="utf-8") as f:
-        f.write(markdown)
+            data = response.json()
 
-    print("\nFULL WEBSITE SAVED -> full_markdown.txt")
+            markdown = data.get("data", {}).get("markdown", "")
 
-    return markdown
+            print("\nMARKDOWN SIZE:")
+            print(len(markdown))
+
+            with open("full_markdown.txt", "w", encoding="utf-8") as f:
+                f.write(markdown)
+
+            print("\nFULL WEBSITE SAVED -> full_markdown.txt")
+
+            return markdown
+
+        except Exception as e:
+
+            print("\nSCRAPE ERROR:")
+            print(str(e))
+
+        time.sleep(5)
+
+    return ""
 
 # =========================================================
 # PROMPT
 # =========================================================
 
 PROMPT = """
-Аз ин матни калон танҳо қурби асъорро ёб.
+Аз ин матни калон танҳо қисми қурби асъорро баргардон.
 
-Қоидаҳо:
-- Танҳо JSON баргардон
-- Ягон шарҳ надеҳ
-- Ягон markdown надеҳ
-- Ягон ```json надеҳ
-- Танҳо рақамҳои воқеиро истифода бар
-- Агар асъор набошад -> 0.0000
+Ягон шарҳ надеҳ.
+Фақат ҳамон қисми қурбҳоро навис.
 
-Формат:
-
-{
-  "USD": {"buy":"0.0000","sell":"0.0000"},
-  "EUR": {"buy":"0.0000","sell":"0.0000"},
-  "RUB": {"buy":"0.0000","sell":"0.0000"},
-  "CNY": {"buy":"0.0000","sell":"0.0000"},
-  "KZT": {"buy":"0.0000","sell":"0.0000"}
-}
-
-МАТН:
+TEXT:
 """
 
 # =========================================================
-# AI EXTRACT
+# AI
 # =========================================================
 
-def extract(markdown):
+def ask_ai(markdown):
 
-    for model in MODELS:
+    print("\n" + "=" * 80)
+    print("ASKING AI")
+    print("=" * 80)
 
-        print("\n" + "=" * 80)
-        print(f"MODEL: {model}")
-        print("=" * 80)
+    for attempt in range(3):
 
-        for attempt in range(3):
+        print(f"\nATTEMPT {attempt+1}/3")
 
-            print(f"\nATTEMPT {attempt+1}/3")
+        try:
 
-            try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": MODEL,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": PROMPT + markdown
+                        }
+                    ],
+                    "temperature": 0,
+                    "max_tokens": 1000
+                },
+                timeout=300
+            )
 
-                response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": PROMPT + markdown
-                            }
-                        ],
-                        "temperature": 0,
-                        "max_tokens": 400
-                    },
-                    timeout=300
-                )
+            print("\nSTATUS:")
+            print(response.status_code)
 
-                print("\nSTATUS:")
-                print(response.status_code)
+            raw = response.text
 
-                raw = response.text
+            print("\nRAW RESPONSE:")
+            print(raw[:2000])
 
-                print("\nRAW RESPONSE:")
-                print(raw[:3000])
+            data = response.json()
 
-                data = response.json()
+            if "choices" not in data:
 
-                if "choices" not in data:
-                    print("\nNO CHOICES")
-                    continue
+                print("\nNO CHOICES")
+                continue
 
-                content = data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
 
-                if content is None:
-                    print("\nCONTENT IS NONE")
-                    continue
+            if not content:
 
-                print("\nAI CONTENT:")
-                print(content)
+                print("\nEMPTY CONTENT")
+                continue
 
-                content = content.replace("```json", "")
-                content = content.replace("```", "")
+            print("\nAI RESULT:")
+            print(content)
 
-                start = content.find("{")
-                end = content.rfind("}") + 1
+            return content
 
-                if start == -1:
-                    print("\nNO JSON FOUND")
-                    continue
+        except Exception as e:
 
-                parsed = json.loads(content[start:end])
+            print("\nAI ERROR:")
+            print(str(e))
 
-                return parsed
+        time.sleep(5)
 
-            except Exception as e:
+    return ""
 
-                print("\nERROR:")
-                print(str(e))
+# =========================================================
+# PARSE
+# =========================================================
 
-            time.sleep(5)
+def parse_rates(text):
 
-    return EMPTY
+    result = json.loads(json.dumps(EMPTY))
+
+    patterns = {
+        "USD": r"USD\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
+        "EUR": r"EUR\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
+        "RUB": r"RUB\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
+        "CNY": r"CNY\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
+        "KZT": r"KZT\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)"
+    }
+
+    for currency, pattern in patterns.items():
+
+        match = re.search(pattern, text)
+
+        if match:
+
+            result[currency]["buy"] = match.group(1)
+            result[currency]["sell"] = match.group(2)
+
+    return result
 
 # =========================================================
 # RUN
@@ -206,12 +218,20 @@ print("=" * 80)
 
 markdown = scrape()
 
-result = extract(markdown)
+if not markdown:
+
+    print("\nSCRAPE FAILED")
+    exit()
+
+ai_text = ask_ai(markdown)
+
+currencies = parse_rates(ai_text)
 
 final = {
     "bank_name": BANK["name"],
     "bank_id": BANK["id"],
-    "currencies": result
+    "success": True,
+    "currencies": currencies
 }
 
 print("\n" + "=" * 80)
@@ -221,7 +241,13 @@ print("=" * 80)
 print(json.dumps(final, ensure_ascii=False, indent=2))
 
 with open("result.json", "w", encoding="utf-8") as f:
-    json.dump(final, f, ensure_ascii=False, indent=2)
+
+    json.dump(
+        final,
+        f,
+        ensure_ascii=False,
+        indent=2
+    )
 
 print("\nRESULT SAVED -> result.json")
 print("\nDONE")
