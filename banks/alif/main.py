@@ -2,12 +2,12 @@ import requests
 import json
 import os
 import time
-from bs4 import BeautifulSoup
 
 # =========================================================
-# API
+# API KEYS
 # =========================================================
 
+FIRECRAWL_API = os.getenv("FIRECRAWL_API")
 OPENROUTER_API = os.getenv("OPENROUTER_API")
 
 # =========================================================
@@ -17,10 +17,14 @@ OPENROUTER_API = os.getenv("OPENROUTER_API")
 MODEL = "deepseek/deepseek-v4-flash:free"
 
 # =========================================================
-# URL
+# BANK
 # =========================================================
 
-URL = "https://alif.tj/ru"
+BANK = {
+    "name": "Алиф Бонк",
+    "id": "alif",
+    "url": "https://alif.tj/ru"
+}
 
 # =========================================================
 # PROMPT
@@ -38,125 +42,147 @@ JSON надеҳ.
 """
 
 # =========================================================
-# DOWNLOAD WEBSITE
+# SCRAPE WEBSITE
 # =========================================================
 
-print("=" * 80)
-print("DOWNLOADING WEBSITE")
-print("=" * 80)
+def scrape():
 
-html = requests.get(
-    URL,
-    headers={
-        "User-Agent": "Mozilla/5.0"
-    },
-    timeout=120
-).text
+    print("=" * 80)
+    print("SCRAPING WEBSITE")
+    print("=" * 80)
 
-print("HTML SIZE:")
-print(len(html))
+    response = requests.post(
+        "https://api.firecrawl.dev/v1/scrape",
+        headers={
+            "Authorization": f"Bearer {FIRECRAWL_API}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "url": BANK["url"],
+            "formats": ["markdown"]
+        },
+        timeout=300
+    )
 
-# =========================================================
-# HTML -> TEXT
-# =========================================================
+    print("STATUS:")
+    print(response.status_code)
 
-print("=" * 80)
-print("CONVERTING HTML TO TEXT")
-print("=" * 80)
+    raw = response.text
 
-soup = BeautifulSoup(html, "html.parser")
+    print("=" * 80)
+    print("RAW FIRECRAWL")
+    print("=" * 80)
 
-text = soup.get_text("\n")
+    print(raw[:3000])
 
-text = "\n".join(
-    line.strip()
-    for line in text.splitlines()
-    if line.strip()
-)
+    data = json.loads(raw)
 
-print("TEXT SIZE:")
-print(len(text))
+    markdown = data["data"]["markdown"]
 
-with open("website_text.txt", "w", encoding="utf-8") as f:
-    f.write(text)
+    print("=" * 80)
+    print("MARKDOWN SIZE")
+    print("=" * 80)
 
-print("TEXT SAVED -> website_text.txt")
+    print(len(markdown))
+
+    with open("full_markdown.txt", "w", encoding="utf-8") as f:
+        f.write(markdown)
+
+    print("FULL MARKDOWN SAVED -> full_markdown.txt")
+
+    return markdown
 
 # =========================================================
 # ASK AI
 # =========================================================
 
-print("=" * 80)
-print("ASKING AI")
-print("=" * 80)
+def ask_ai(markdown):
 
-for attempt in range(3):
+    print("=" * 80)
+    print("ASKING AI")
+    print("=" * 80)
 
-    print(f"ATTEMPT {attempt+1}/3")
+    for attempt in range(3):
 
-    try:
+        print(f"ATTEMPT {attempt+1}/3")
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_API}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": MODEL,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": PROMPT + text
-                    }
-                ],
-                "temperature": 0
-            },
-            timeout=300
-        )
+        try:
 
-        print("STATUS:")
-        print(response.status_code)
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": MODEL,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": PROMPT + markdown
+                        }
+                    ],
+                    "temperature": 0
+                },
+                timeout=300
+            )
 
-        raw = response.text
+            print("STATUS:")
+            print(response.status_code)
 
-        print("=" * 80)
-        print("RAW RESPONSE")
-        print("=" * 80)
+            raw = response.text
 
-        print(raw[:3000])
+            print("=" * 80)
+            print("RAW AI RESPONSE")
+            print("=" * 80)
 
-        data = json.loads(raw)
+            print(raw[:5000])
 
-        if "choices" not in data:
+            data = json.loads(raw)
 
-            print("NO CHOICES")
+            if "choices" not in data:
 
-            time.sleep(5)
+                print("NO CHOICES")
 
-            continue
+                time.sleep(5)
 
-        answer = data["choices"][0]["message"].get("content", "")
+                continue
 
-        print("=" * 80)
-        print("AI ANSWER")
-        print("=" * 80)
+            answer = data["choices"][0]["message"].get("content", "")
 
-        print(answer)
+            print("=" * 80)
+            print("AI ANSWER")
+            print("=" * 80)
 
-        with open("answer.txt", "w", encoding="utf-8") as f:
-            f.write(answer)
+            print(answer)
 
-        print("ANSWER SAVED -> answer.txt")
+            with open("answer.txt", "w", encoding="utf-8") as f:
+                f.write(answer)
 
-        break
+            print("ANSWER SAVED -> answer.txt")
 
-    except Exception as e:
+            return answer
 
-        print("ERROR:")
-        print(e)
+        except Exception as e:
+
+            print("ERROR:")
+            print(e)
 
         time.sleep(5)
+
+    return ""
+
+# =========================================================
+# RUN
+# =========================================================
+
+print("\n" + "=" * 80)
+print(BANK["name"])
+print("=" * 80)
+
+markdown = scrape()
+
+answer = ask_ai(markdown)
 
 print("=" * 80)
 print("DONE")
