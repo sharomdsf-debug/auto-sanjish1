@@ -1,6 +1,7 @@
-name: AI Bank Scraper
+name: Raw Bank Scraper
 
 on:
+
   workflow_dispatch:
 
   schedule:
@@ -11,13 +12,12 @@ permissions:
   contents: write
 
 jobs:
+
   scrape:
+
     runs-on: ubuntu-latest
 
     timeout-minutes: 360
-
-    env:
-      OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
 
     steps:
 
@@ -38,27 +38,20 @@ jobs:
           python-version: "3.11"
 
       # =====================================
-      # INSTALL REQUIREMENTS
+      # INSTALL
       # =====================================
 
-      - name: Install requirements
+      - name: Install packages
         run: |
-          pip install requests playwright
-
-      # =====================================
-      # INSTALL CHROMIUM
-      # =====================================
-
-      - name: Install Chromium
-        run: |
+          pip install playwright
           playwright install chromium
           playwright install-deps chromium
 
       # =====================================
-      # RUN SCRAPER
+      # RUN SCRIPT
       # =====================================
 
-      - name: Run AI scraper
+      - name: Run scraper
         run: |
           python main.py
 
@@ -66,15 +59,16 @@ jobs:
       # COMMIT JSON
       # =====================================
 
-      - name: Commit updated JSON
+      - name: Commit JSON files
         run: |
+
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
 
           git add *.json
-          git add raw/*.json
+          git add raw_banks/*.json
 
-          git commit -m "🤖 Auto update currency rates" || echo "No changes"
+          git commit -m "🤖 Auto update raw bank data" || echo "No changes"
 
           git pull --rebase
 
