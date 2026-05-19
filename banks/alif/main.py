@@ -1,25 +1,14 @@
 import requests
-import os
 import json
+import os
 import time
-import copy
-import re
-from datetime import datetime
 
 # =========================================================
-# API
+# API KEYS
 # =========================================================
 
 FIRECRAWL_API = os.getenv("FIRECRAWL_API")
 OPENROUTER_API = os.getenv("OPENROUTER_API")
-
-# =========================================================
-# MODEL
-# =========================================================
-
-MODELS = [
-    "openai/gpt-oss-120b:free"
-]
 
 # =========================================================
 # BANK
@@ -32,265 +21,85 @@ BANK = {
 }
 
 # =========================================================
-# VALIDATION
+# MODELS
 # =========================================================
 
-VALID_RANGES = {
-    "USD": (8.0, 12.0),
-    "EUR": (8.0, 14.0),
-    "RUB": (0.08, 0.25),
-    "CNY": (1.0, 2.5),
-    "KZT": (0.010, 0.060)
-}
+MODELS = [
+    "openai/gpt-oss-120b:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "mistralai/mistral-7b-instruct:free"
+]
 
-CURRENCIES = list(VALID_RANGES.keys())
+# =========================================================
+# EMPTY JSON
+# =========================================================
 
 EMPTY = {
-    c: {
-        "buy": "0.0000",
-        "sell": "0.0000"
-    }
-    for c in CURRENCIES
+    "USD": {"buy": "0.0000", "sell": "0.0000"},
+    "EUR": {"buy": "0.0000", "sell": "0.0000"},
+    "RUB": {"buy": "0.0000", "sell": "0.0000"},
+    "CNY": {"buy": "0.0000", "sell": "0.0000"},
+    "KZT": {"buy": "0.0000", "sell": "0.0000"}
 }
 
 # =========================================================
-# HELPERS
+# FIRECRAWL SCRAPE
 # =========================================================
 
-def validate(currency, value):
+def scrape():
 
-    try:
-
-        num = float(str(value).replace(",", "."))
-
-        lo, hi = VALID_RANGES[currency]
-
-        if lo <= num <= hi:
-            return f"{num:.4f}"
-
-        return "0.0000"
-
-    except:
-        return "0.0000"
-
-
-def clean_json(data):
-
-    result = copy.deepcopy(EMPTY)
-
-    for cur in CURRENCIES:
-
-        if cur not in data:
-            continue
-
-        result[cur]["buy"] = validate(
-            cur,
-            data[cur].get("buy", "0")
-        )
-
-        result[cur]["sell"] = validate(
-            cur,
-            data[cur].get("sell", "0")
-        )
-
-    return result
-
-
-def count_found(data):
-
-    total = 0
-
-    for cur in CURRENCIES:
-
-        if (
-            data[cur]["buy"] != "0.0000"
-            or data[cur]["sell"] != "0.0000"
-        ):
-            total += 1
-
-    return total
-
-# =========================================================
-# SCRAPE
-# =========================================================
-
-def scrape(url):
-
-    print("\n" + "=" * 80)
-    print(f"SCRAPING: {url}")
+    print("=" * 80)
+    print(f"SCRAPING: {BANK['website']}")
     print("=" * 80)
 
-    for attempt in range(3):
+    response = requests.post(
+        "https://api.firecrawl.dev/v1/scrape",
+        headers={
+            "Authorization": f"Bearer {FIRECRAWL_API}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "url": BANK["website"],
+            "formats": ["markdown"],
+            "onlyMainContent": False,
+            "waitFor": 10000
+        },
+        timeout=180
+    )
 
-        try:
+    print("\nSTATUS:")
+    print(response.status_code)
 
-            print(f"\nATTEMPT {attempt+1}/3")
+    data = response.json()
 
-            response = requests.post(
-                "https://api.firecrawl.dev/v1/scrape",
-                headers={
-                    "Authorization": f"Bearer {FIRECRAWL_API}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "url": url,
-                    "formats": ["markdown"],
-                    "onlyMainContent": False,
-                    "waitFor": 15000
-                },
-                timeout=180
-            )
+    markdown = data.get("data", {}).get("markdown", "")
 
-            print("\nSTATUS:")
-            print(response.status_code)
+    print("\nMARKDOWN SIZE:")
+    print(len(markdown))
 
-            data = response.json()
+    with open("full_markdown.txt", "w", encoding="utf-8") as f:
+        f.write(markdown)
 
-            markdown = data.get(
-                "data",
-                {}
-            ).get(
-                "markdown",
-                ""
-            )
-
-            if len(markdown) > 1000:
-
-                print("\nSCRAPE SUCCESS")
-
-                print("\nMARKDOWN SIZE:")
-                print(len(markdown))
-
-                with open(
-                    "full_markdown.txt",
-                    "w",
-                    encoding="utf-8"
-                ) as f:
-                    f.write(markdown)
-
-                print("\nFULL WEBSITE SAVED -> full_markdown.txt")
-
-                return markdown
-
-        except Exception as e:
-
-            print("\nSCRAPE ERROR:")
-            print(str(e))
-
-        time.sleep(5)
-
-    return ""
-
-# =========================================================
-# FIND SECTION
-# =========================================================
-
-def find_currency_section(markdown):
-
-    print("\n" + "=" * 80)
-    print("SEARCHING CURRENCY SECTION")
-    print("=" * 80)
-
-    keywords = [
-        "Асъор",
-        "Харид",
-        "Фурӯш",
-        "USD",
-        "EUR",
-        "RUB",
-        "Обмен валют",
-        "Курс валют"
-    ]
-
-    for keyword in keywords:
-
-        pos = markdown.find(keyword)
-
-        if pos != -1:
-
-            start = max(0, pos - 2000)
-            end = min(len(markdown), pos + 6000)
-
-            section = markdown[start:end]
-
-            print("\nFOUND KEYWORD:")
-            print(keyword)
-
-            print("\nSECTION SIZE:")
-            print(len(section))
-
-            with open(
-                "currency_section.txt",
-                "w",
-                encoding="utf-8"
-            ) as f:
-                f.write(section)
-
-            print("\nSECTION SAVED -> currency_section.txt")
-
-            return section
-
-    print("\nFALLBACK TO RAW MARKDOWN")
+    print("\nFULL WEBSITE SAVED -> full_markdown.txt")
 
     return markdown
 
 # =========================================================
-# REGEX EXTRACT
+# PROMPT
 # =========================================================
 
-def regex_extract(section):
+PROMPT = """
+Аз ин матни калон танҳо қурби асъорро ёб.
 
-    print("\n" + "=" * 80)
-    print("REGEX EXTRACTION")
-    print("=" * 80)
+Қоидаҳо:
+- Танҳо JSON баргардон
+- Ягон шарҳ надеҳ
+- Ягон markdown надеҳ
+- Ягон ```json надеҳ
+- Танҳо рақамҳои воқеиро истифода бар
+- Агар асъор набошад -> 0.0000
 
-    result = copy.deepcopy(EMPTY)
-
-    patterns = {
-        "USD": r"USD\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
-        "EUR": r"EUR\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
-        "RUB": r"RUB\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
-        "CNY": r"CNY\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)",
-        "KZT": r"KZT\s*\|\s*([0-9.,]+)\s*\|\s*([0-9.,]+)"
-    }
-
-    for currency, pattern in patterns.items():
-
-        match = re.search(
-            pattern,
-            section,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            buy = match.group(1)
-            sell = match.group(2)
-
-            result[currency]["buy"] = validate(
-                currency,
-                buy
-            )
-
-            result[currency]["sell"] = validate(
-                currency,
-                sell
-            )
-
-            print(f"\nFOUND {currency}")
-            print(f"BUY: {buy}")
-            print(f"SELL: {sell}")
-
-    return result
-
-# =========================================================
-# AI EXTRACT
-# =========================================================
-
-JSON_PROMPT = """
-Extract REAL exchange rates.
-
-Return ONLY JSON.
+Формат:
 
 {
   "USD": {"buy":"0.0000","sell":"0.0000"},
@@ -300,22 +109,24 @@ Return ONLY JSON.
   "KZT": {"buy":"0.0000","sell":"0.0000"}
 }
 
-TEXT:
+МАТН:
 """
 
-def ai_extract(section):
+# =========================================================
+# AI EXTRACT
+# =========================================================
 
-    print("\n" + "=" * 80)
-    print("AI EXTRACTION")
-    print("=" * 80)
-
-    best = copy.deepcopy(EMPTY)
+def extract(markdown):
 
     for model in MODELS:
 
-        print(f"\nMODEL: {model}")
+        print("\n" + "=" * 80)
+        print(f"MODEL: {model}")
+        print("=" * 80)
 
         for attempt in range(3):
+
+            print(f"\nATTEMPT {attempt+1}/3")
 
             try:
 
@@ -330,146 +141,87 @@ def ai_extract(section):
                         "messages": [
                             {
                                 "role": "user",
-                                "content": JSON_PROMPT + section
+                                "content": PROMPT + markdown
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 300
+                        "max_tokens": 400
                     },
-                    timeout=180
+                    timeout=300
                 )
+
+                print("\nSTATUS:")
+                print(response.status_code)
+
+                raw = response.text
+
+                print("\nRAW RESPONSE:")
+                print(raw[:3000])
 
                 data = response.json()
 
-                print("\nOPENROUTER RESPONSE:")
-                print(json.dumps(data)[:1000])
-
                 if "choices" not in data:
+                    print("\nNO CHOICES")
                     continue
 
-                raw = data["choices"][0]["message"]["content"]
+                content = data["choices"][0]["message"]["content"]
 
-                if raw is None:
+                if content is None:
+                    print("\nCONTENT IS NONE")
                     continue
 
-                print("\nRAW AI:")
-                print(raw)
+                print("\nAI CONTENT:")
+                print(content)
 
-                raw = raw.replace("```json", "")
-                raw = raw.replace("```", "")
+                content = content.replace("```json", "")
+                content = content.replace("```", "")
 
-                start = raw.find("{")
-                end = raw.rfind("}") + 1
+                start = content.find("{")
+                end = content.rfind("}") + 1
 
                 if start == -1:
+                    print("\nNO JSON FOUND")
                     continue
 
-                parsed = json.loads(raw[start:end])
+                parsed = json.loads(content[start:end])
 
-                cleaned = clean_json(parsed)
-
-                found = count_found(cleaned)
-
-                print(f"\nFOUND: {found}/5")
-
-                if found > count_found(best):
-                    best = cleaned
-
-                if found >= 3:
-                    return cleaned
+                return parsed
 
             except Exception as e:
 
-                print("\nAI ERROR:")
+                print("\nERROR:")
                 print(str(e))
 
             time.sleep(5)
 
-    return best
+    return EMPTY
 
 # =========================================================
-# MAIN
+# RUN
 # =========================================================
 
 print("\n" + "=" * 80)
 print(BANK["name"])
 print("=" * 80)
 
-markdown = scrape(BANK["website"])
+markdown = scrape()
 
-if not markdown:
-
-    print("\nSCRAPE FAILED")
-    exit()
-
-section = find_currency_section(markdown)
-
-print("\nSECTION SIZE:")
-print(len(section))
-
-# =========================================================
-# TRY REGEX FIRST
-# =========================================================
-
-currencies = regex_extract(section)
-
-found = count_found(currencies)
-
-# =========================================================
-# IF REGEX FAILED -> AI
-# =========================================================
-
-if found < 3:
-
-    print("\nREGEX NOT ENOUGH -> USING AI")
-
-    ai_result = ai_extract(section)
-
-    if count_found(ai_result) > found:
-        currencies = ai_result
-
-# =========================================================
-# FINAL
-# =========================================================
+result = extract(markdown)
 
 final = {
     "bank_name": BANK["name"],
     "bank_id": BANK["id"],
-    "success": True,
-    "currencies": currencies,
-    "found": count_found(currencies),
-    "updated": datetime.now().strftime(
-        "%d.%m.%Y %H:%M"
-    )
+    "currencies": result
 }
 
-with open(
-    "result.json",
-    "w",
-    encoding="utf-8"
-) as f:
-
-    json.dump(
-        final,
-        f,
-        ensure_ascii=False,
-        indent=2
-    )
-
 print("\n" + "=" * 80)
-print("FINAL RESULT:")
+print("FINAL RESULT")
 print("=" * 80)
 
-print(
-    json.dumps(
-        final,
-        ensure_ascii=False,
-        indent=2
-    )
-)
+print(json.dumps(final, ensure_ascii=False, indent=2))
+
+with open("result.json", "w", encoding="utf-8") as f:
+    json.dump(final, f, ensure_ascii=False, indent=2)
 
 print("\nRESULT SAVED -> result.json")
-
-print("\n" + "=" * 80)
-print("DONE")
-print("=" * 80)
+print("\nDONE")
