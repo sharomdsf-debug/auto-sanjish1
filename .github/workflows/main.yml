@@ -1,16 +1,11 @@
-name: test
+name: Alif Bank
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
-
+  run:
     runs-on: ubuntu-latest
-
-    env:
-      FIRECRAWL_API: ${{ secrets.FIRECRAWL_API }}
-      OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
 
     steps:
 
@@ -22,8 +17,19 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Requests
+      - name: Install requests
         run: pip install requests
 
-      - name: Run Script
+      - name: Run scraper
+        env:
+          FIRECRAWL_API: ${{ secrets.FIRECRAWL_API }}
+          OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
         run: python banks/alif/main.py
+
+      - name: Upload answer
+        uses: actions/upload-artifact@v4
+        with:
+          name: result
+          path: |
+            answer.txt
+            full_markdown.txt
