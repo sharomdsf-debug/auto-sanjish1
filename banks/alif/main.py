@@ -1,6 +1,6 @@
 import os
 import json
-import re
+import requests
 from playwright.sync_api import sync_playwright
 
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
@@ -16,11 +16,9 @@ def scrape_website(url):
         print(f"📄 Саҳифа бор мешавад: {url}")
         page.goto(url, wait_until="networkidle")
         
-        # Ҷадвали асъор пайдо шавад
         print("⏳ Ҷадвал интизор...")
         page.wait_for_selector("table", timeout=15000)
         
-        # Матни ҷадвалро гиред
         table = page.query_selector("table")
         text = table.inner_text()
         
@@ -32,8 +30,6 @@ def scrape_website(url):
         return text
 
 def extract_prices(text):
-    import requests
-    
     print("🤖 DeepSeek таҳлил мекунад...")
     
     response = requests.post(
