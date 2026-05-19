@@ -2,8 +2,8 @@ name: Scrape Currency Rates
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # Ҳар рӯз соати 6
-  workflow_dispatch:        # Дастӣ низ
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 jobs:
   scrape:
