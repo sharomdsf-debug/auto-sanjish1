@@ -1,0 +1,14 @@
+{
+  "bank_name": "Микрофинансбонк",
+  "bank_id": "mfb",
+  "website": "https://mfb.tj/",
+  "scraped_at": "19.05.2026 15:31:29",
+  "data": {
+    "title": "",
+    "body_text": "",
+    "tables": [],
+    "api_responses": [],
+    "exchange_related": []
+  },
+  "error": "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://mfb.tj/\nCall log:\n  - navigating to \"https://mfb.tj/\", waiting until \"networkidle\"\n"
+}

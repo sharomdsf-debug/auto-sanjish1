@@ -1,0 +1,13 @@
+{
+  "bank_name": "ICB",
+  "bank_id": "icb",
+  "website": "https://icb.tj/",
+  "scraped_at": "19.05.2026 15:30:57",
+  "data": {
+    "title": "The URL you requested has been blocked",
+    "body_text": "block\nWeb Page Blocked!\n\nThe page cannot be displayed. Please contact the administrator for additional information.\n\nURL: icb.tj/\n\nClient IP: 135.232.200.37\nAttack ID: 20000051\nMessage ID: 000244602798",
+    "tables": [],
+    "api_responses": [],
+    "exchange_related": []
+  }
+}

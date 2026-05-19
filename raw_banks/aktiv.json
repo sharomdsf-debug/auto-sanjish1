@@ -1,0 +1,14 @@
+{
+  "bank_name": "Актив Бонк",
+  "bank_id": "aktiv",
+  "website": "https://aktivbank.tj/",
+  "scraped_at": "19.05.2026 15:37:49",
+  "data": {
+    "title": "",
+    "body_text": "",
+    "tables": [],
+    "api_responses": [],
+    "exchange_related": []
+  },
+  "error": "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://aktivbank.tj/\nCall log:\n  - navigating to \"https://aktivbank.tj/\", waiting until \"networkidle\"\n"
+}
