@@ -1,26 +1,8 @@
 import os
 import json
 import time
-import copy
-import requests
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-
-# =========================================================
-# API
-# =========================================================
-
-OPENROUTER_API = os.getenv("OPENROUTER_API")
-
-# =========================================================
-# AI MODELS
-# =========================================================
-
-MODELS = [
-    "openai/gpt-oss-120b:free",
-    "deepseek/deepseek-v3-base:free",
-    "qwen/qwen3-coder:free"
-]
 
 # =========================================================
 # BANKS
@@ -54,79 +36,33 @@ BANKS = [
 ]
 
 # =========================================================
-# VALIDATION
+# SAVE FOLDER
 # =========================================================
 
-VALID_RANGES = {
-    "USD": (8.0, 12.0),
-    "EUR": (8.0, 14.0),
-    "RUB": (0.08, 0.25),
-    "CNY": (1.0, 2.5),
-    "KZT": (0.010, 0.060)
-}
-
-CURRENCIES = list(VALID_RANGES.keys())
-
-EMPTY = {
-    c: {"buy": "0.0000", "sell": "0.0000"}
-    for c in CURRENCIES
-}
+os.makedirs("raw_banks", exist_ok=True)
 
 # =========================================================
-# HELPERS
+# SCRAPER
 # =========================================================
 
-def validate(currency, value):
+def scrape_bank(bank):
 
-    try:
+    print("\n" + "=" * 70)
+    print(bank["name"])
+    print("=" * 70)
 
-        num = float(str(value).replace(",", "."))
-
-        lo, hi = VALID_RANGES[currency]
-
-        if lo <= num <= hi:
-            return f"{num:.4f}"
-
-        return "0.0000"
-
-    except:
-        return "0.0000"
-
-
-def clean_json(data):
-
-    result = copy.deepcopy(EMPTY)
-
-    for cur in CURRENCIES:
-
-        if cur not in data:
-            continue
-
-        result[cur]["buy"] = validate(
-            cur,
-            data[cur].get("buy", "0")
-        )
-
-        result[cur]["sell"] = validate(
-            cur,
-            data[cur].get("sell", "0")
-        )
-
-    return result
-
-# =========================================================
-# PLAYWRIGHT SCRAPER
-# =========================================================
-
-def scrape_everything(url):
-
-    print(f"\n🌐 OPENING: {url}")
-
-    raw_data = {
-        "html": "",
-        "text": "",
-        "tables": [],
-        "api_responses": []
+    result = {
+        "bank_name": bank["name"],
+        "bank_id": bank["id"],
+        "website": bank["website"],
+        "scraped_at": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+        "data": {
+            "title": "",
+            "body_text": "",
+            "tables": [],
+            "api_responses": [],
+            "exchange_related": []
+        }
     }
 
     try:
@@ -141,27 +77,30 @@ def scrape_everything(url):
 
             page = context.new_page()
 
-            # =====================================
-            # CAPTURE NETWORK
-            # =====================================
+            # =================================================
+            # NETWORK CAPTURE
+            # =================================================
 
             def handle_response(response):
 
                 try:
 
-                    ct = response.headers.get("content-type", "")
+                    ct = response.headers.get(
+                        "content-type",
+                        ""
+                    )
 
                     if (
                         "json" in ct
-                        or "api" in response.url
-                        or "graphql" in response.url
+                        or "api" in response.url.lower()
+                        or "graphql" in response.url.lower()
                     ):
 
                         body = response.text()
 
-                        if len(body) < 200000:
+                        if len(body) < 300000:
 
-                            raw_data["api_responses"].append({
+                            result["data"]["api_responses"].append({
                                 "url": response.url,
                                 "body": body
                             })
@@ -169,224 +108,179 @@ def scrape_everything(url):
                 except:
                     pass
 
-            page.on("response", handle_response)
+            page.on(
+                "response",
+                handle_response
+            )
 
-            # =====================================
-            # LOAD WEBSITE
-            # =====================================
+            # =================================================
+            # OPEN WEBSITE
+            # =================================================
+
+            print("🌐 Opening website...")
 
             page.goto(
-                url,
+                bank["website"],
                 wait_until="networkidle",
-                timeout=120000
+                timeout=180000
             )
 
             time.sleep(10)
 
-            # =====================================
+            # =================================================
             # AUTO SCROLL
-            # =====================================
+            # =================================================
 
-            for i in range(10):
+            print("📜 Scrolling...")
 
-                page.mouse.wheel(0, 3000)
+            for _ in range(15):
+
+                page.mouse.wheel(0, 5000)
 
                 time.sleep(1)
 
-            # =====================================
-            # GET HTML
-            # =====================================
+            # =================================================
+            # TITLE
+            # =================================================
 
-            raw_data["html"] = page.content()
+            try:
 
-            # =====================================
-            # GET TEXT
-            # =====================================
+                result["data"]["title"] = page.title()
 
-            raw_data["text"] = page.locator("body").inner_text()
+            except:
+                pass
 
-            # =====================================
-            # GET TABLES
-            # =====================================
+            # =================================================
+            # BODY TEXT
+            # =================================================
 
-            tables = page.locator("table").all()
+            print("📝 Extracting body text...")
 
-            for table in tables:
+            try:
 
-                try:
+                body = page.locator("body").inner_text()
 
-                    txt = table.inner_text()
+                result["data"]["body_text"] = body
 
-                    if len(txt) > 20:
+            except:
+                pass
 
-                        raw_data["tables"].append(txt)
+            # =================================================
+            # TABLES
+            # =================================================
 
-                except:
-                    pass
+            print("📊 Extracting tables...")
+
+            try:
+
+                tables = page.locator("table").all()
+
+                for table in tables:
+
+                    try:
+
+                        txt = table.inner_text()
+
+                        if len(txt) > 20:
+
+                            result["data"]["tables"].append(txt)
+
+                    except:
+                        pass
+
+            except:
+                pass
+
+            # =================================================
+            # EXCHANGE RATE SEARCH
+            # =================================================
+
+            print("💵 Searching exchange sections...")
+
+            keywords = [
+                "USD",
+                "EUR",
+                "RUB",
+                "CNY",
+                "KZT",
+                "доллар",
+                "евро",
+                "рубл",
+                "қурб",
+                "курс",
+                "валюта",
+                "exchange",
+                "currency"
+            ]
+
+            lines = result["data"]["body_text"].split("\n")
+
+            found = []
+
+            for line in lines:
+
+                low = line.lower()
+
+                for key in keywords:
+
+                    if key.lower() in low:
+
+                        clean = line.strip()
+
+                        if len(clean) > 5:
+
+                            found.append(clean)
+
+                        break
+
+            result["data"]["exchange_related"] = found
+
+            # =================================================
+            # CLOSE
+            # =================================================
 
             browser.close()
 
     except Exception as e:
 
-        print("SCRAPE ERROR:", e)
+        result["error"] = str(e)
 
-    return raw_data
+        print("❌ ERROR:", e)
 
-# =========================================================
-# AI EXTRACTOR
-# =========================================================
+    # =========================================================
+    # SAVE INDIVIDUAL JSON
+    # =========================================================
 
-PROMPT = """
-You are a professional AI currency extraction system.
-
-Extract REAL exchange rates against TJS.
-
-SUPPORTED:
-USD
-EUR
-RUB
-CNY
-KZT
-
-IMPORTANT:
-
-1. Return ONLY VALID JSON.
-2. No markdown.
-3. No explanations.
-4. No comments.
-5. Never invent values.
-
-6. If currency not found:
-buy = "0.0000"
-sell = "0.0000"
-
-7. If only one rate exists:
-buy = real value
-sell = "0.0000"
-
-OUTPUT:
-
-{
-  "USD": {"buy":"0.0000","sell":"0.0000"},
-  "EUR": {"buy":"0.0000","sell":"0.0000"},
-  "RUB": {"buy":"0.0000","sell":"0.0000"},
-  "CNY": {"buy":"0.0000","sell":"0.0000"},
-  "KZT": {"buy":"0.0000","sell":"0.0000"}
-}
-
-RAW WEBSITE DATA:
-"""
-
-def extract_with_ai(raw):
-
-    best = copy.deepcopy(EMPTY)
-
-    combined = json.dumps(raw, ensure_ascii=False)
-
-    combined = combined[:120000]
-
-    for model in MODELS:
-
-        print(f"\n🤖 MODEL: {model}")
-
-        try:
-
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": PROMPT + combined
-                        }
-                    ],
-                    "temperature": 0,
-                    "max_tokens": 500
-                },
-                timeout=180
-            )
-
-            data = response.json()
-
-            if "choices" not in data:
-                continue
-
-            content = data["choices"][0]["message"]["content"]
-
-            content = content.replace("```json", "")
-            content = content.replace("```", "")
-
-            start = content.find("{")
-            end = content.rfind("}") + 1
-
-            if start == -1:
-                continue
-
-            parsed = json.loads(content[start:end])
-
-            cleaned = clean_json(parsed)
-
-            return cleaned
-
-        except Exception as e:
-
-            print("AI ERROR:", e)
-
-    return best
-
-# =========================================================
-# MAIN LOOP
-# =========================================================
-
-all_rates = []
-
-for bank in BANKS:
-
-    print("\n" + "="*70)
-    print(bank["name"])
-    print("="*70)
-
-    raw = scrape_everything(
-        bank["website"]
-    )
-
-    # =====================================
-    # SAVE RAW
-    # =====================================
-
-    os.makedirs("raw", exist_ok=True)
+    path = f"raw_banks/{bank['id']}.json"
 
     with open(
-        f"raw/{bank['id']}.json",
+        path,
         "w",
         encoding="utf-8"
     ) as f:
 
         json.dump(
-            raw,
+            result,
             f,
             ensure_ascii=False,
             indent=2
         )
 
-    # =====================================
-    # AI EXTRACTION
-    # =====================================
+    print(f"✅ SAVED: {path}")
 
-    currencies = extract_with_ai(raw)
+    return result
 
-    item = {
-        "bank_name": bank["name"],
-        "bank_id": bank["id"],
-        "currencies": currencies
-    }
+# =========================================================
+# MAIN
+# =========================================================
 
-    all_rates.append(item)
+all_banks = []
+
+for bank in BANKS:
+
+    data = scrape_bank(bank)
+
+    all_banks.append(data)
 
     time.sleep(5)
 
@@ -395,15 +289,14 @@ for bank in BANKS:
 # =========================================================
 
 final = {
-    "project_name": "ASOR TJ",
-    "last_updated": "🤖 " + datetime.now().strftime("%d.%m.%Y %H:%M"),
-    "base_currency": "TJS",
-    "status": "success",
-    "rates": all_rates
+    "project_name": "ASOR TJ RAW BANK DATA",
+    "updated_at": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+    "total_banks": len(all_banks),
+    "banks": all_banks
 }
 
 with open(
-    "new.json",
+    "all_banks_raw.json",
     "w",
     encoding="utf-8"
 ) as f:
@@ -415,5 +308,5 @@ with open(
         indent=2
     )
 
-print("\n✅ DONE")
-print(json.dumps(final, ensure_ascii=False, indent=2))
+print("\n🔥 DONE")
+print("✅ all_banks_raw.json CREATED")
