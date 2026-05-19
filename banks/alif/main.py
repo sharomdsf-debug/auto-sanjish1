@@ -96,14 +96,6 @@ else:
             print(response.status_code)
 
             # =================================================
-            # RAW RESPONSE
-            # =================================================
-
-            print("\nRAW RESPONSE PREVIEW:\n")
-
-            print(response.text[:2000])
-
-            # =================================================
             # CHECK STATUS
             # =================================================
 
@@ -186,8 +178,6 @@ else:
                 "api",
                 "json",
                 "kurs",
-                "kursi",
-                "valuta",
                 "usd",
                 "eur",
                 "rub"
@@ -224,7 +214,7 @@ else:
             print("\nFOUND URLS SAVED -> found_urls.json")
 
             # =================================================
-            # TRY SCRAPING FOUND URLS
+            # TEST FOUND URLS
             # =================================================
 
             for link in found_urls:
@@ -244,8 +234,14 @@ else:
                         },
                         json={
                             "url": link,
-                            "formats": ["markdown"],
+
+                            # IMPORTANT
+                            # GET HTML INSTEAD OF MARKDOWN
+
+                            "formats": ["html"],
+
                             "onlyMainContent": False,
+
                             "waitFor": WAIT_FOR
                         },
                         timeout=TIMEOUT
@@ -259,57 +255,193 @@ else:
 
                     sub_data = sub_response.json()
 
-                    sub_markdown = (
+                    # =========================================
+                    # GET HTML
+                    # =========================================
+
+                    html = (
                         sub_data
                         .get("data", {})
-                        .get("markdown", "")
+                        .get("html", "")
                     )
 
-                    if not sub_markdown:
+                    if not html:
                         continue
 
-                    print("\nSUB PAGE SIZE:")
-                    print(len(sub_markdown))
+                    print("\nHTML SIZE:")
+                    print(len(html))
 
                     # =========================================
-                    # SEARCH CURRENCIES
+                    # SAVE HTML
                     # =========================================
 
-                    currency_found = any(
-                        x in sub_markdown.upper()
-                        for x in [
-                            "USD",
-                            "EUR",
-                            "RUB",
-                            "CNY",
-                            "KZT"
-                        ]
+                    with open(
+                        "currency_page.html",
+                        "w",
+                        encoding="utf-8"
+                    ) as f:
+
+                        f.write(html)
+
+                    print(
+                        "\nHTML SAVED -> currency_page.html"
                     )
 
-                    print("\nHAS CURRENCIES:")
-                    print(currency_found)
+                    # =========================================
+                    # SEARCH API ENDPOINTS
+                    # =========================================
 
-                    if currency_found:
+                    print("\n" + "=" * 80)
+                    print("SEARCHING API ENDPOINTS")
+                    print("=" * 80)
 
-                        print("\nFOUND CURRENCY PAGE!")
+                    api_patterns = [
 
-                        print("\nFIRST 5000 CHARS:\n")
+                        r'https://[^"\']+',
 
-                        print(sub_markdown[:5000])
+                        r'/api/[^"\']+',
 
-                        with open(
-                            "currency_page.txt",
-                            "w",
-                            encoding="utf-8"
-                        ) as f:
+                        r'/graphql[^"\']*',
 
-                            f.write(sub_markdown)
+                        r'graphql',
 
-                        print(
-                            "\nCURRENCY PAGE SAVED -> currency_page.txt"
-                        )
+                        r'api',
 
-                        break
+                        r'rates',
+
+                        r'exchange',
+
+                        r'currency',
+
+                        r'fetch\([^)]+\)',
+
+                        r'axios\([^)]+\)',
+
+                        r'__NEXT_DATA__'
+                    ]
+
+                    found_api = []
+
+                    for pattern in api_patterns:
+
+                        try:
+
+                            matches = re.findall(
+                                pattern,
+                                html,
+                                re.IGNORECASE
+                            )
+
+                            for item in matches:
+
+                                if item not in found_api:
+
+                                    found_api.append(item)
+
+                        except:
+                            pass
+
+                    # =========================================
+                    # PRINT FOUND API
+                    # =========================================
+
+                    for item in found_api[:200]:
+
+                        print("\nFOUND:")
+                        print(item)
+
+                    # =========================================
+                    # SAVE API SEARCH
+                    # =========================================
+
+                    with open(
+                        "found_api.txt",
+                        "w",
+                        encoding="utf-8"
+                    ) as f:
+
+                        for item in found_api:
+
+                            f.write(item + "\n\n")
+
+                    print(
+                        "\nFOUND API SAVED -> found_api.txt"
+                    )
+
+                    # =========================================
+                    # SEARCH LIVE CURRENCIES
+                    # =========================================
+
+                    print("\n" + "=" * 80)
+                    print("SEARCHING LIVE RATES")
+                    print("=" * 80)
+
+                    currency_patterns = [
+
+                        r'USD.{0,100}',
+
+                        r'EUR.{0,100}',
+
+                        r'RUB.{0,100}',
+
+                        r'KZT.{0,100}',
+
+                        r'CNY.{0,100}',
+
+                        r'\d+\.\d+',
+
+                        r'\d+,\d+'
+                    ]
+
+                    found_currency = []
+
+                    for pattern in currency_patterns:
+
+                        try:
+
+                            matches = re.findall(
+                                pattern,
+                                html,
+                                re.IGNORECASE
+                            )
+
+                            for item in matches:
+
+                                if item not in found_currency:
+
+                                    found_currency.append(item)
+
+                        except:
+                            pass
+
+                    # =========================================
+                    # PRINT CURRENCY RESULTS
+                    # =========================================
+
+                    for item in found_currency[:100]:
+
+                        print("\nCURRENCY MATCH:")
+                        print(item)
+
+                    # =========================================
+                    # SAVE CURRENCY SEARCH
+                    # =========================================
+
+                    with open(
+                        "currency_matches.txt",
+                        "w",
+                        encoding="utf-8"
+                    ) as f:
+
+                        for item in found_currency:
+
+                            f.write(item + "\n\n")
+
+                    print(
+                        "\nCURRENCY MATCHES SAVED -> currency_matches.txt"
+                    )
+
+                    break
 
                 except Exception as e:
 
