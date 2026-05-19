@@ -17,14 +17,28 @@ BANK_NAME = "Алиф Бонк"
 
 BANK_ID = "alif"
 
-BANK_URL = "https://alif.tj/"
+# IMPORTANT:
+# RU VERSION OF WEBSITE
+# BECAUSE CURRENCY SECTION EXISTS THERE
+
+BANK_URL = "https://alif.tj/ru"
+
+# =========================================================
+# SETTINGS
+# =========================================================
+
+MAX_RETRIES = 3
+
+WAIT_FOR = 15000
+
+TIMEOUT = 60
 
 # =========================================================
 # START
 # =========================================================
 
 print("=" * 80)
-print(f"SCRAPING: {BANK_NAME}")
+print(f"SCRAPING FULL WEBSITE: {BANK_NAME}")
 print("=" * 80)
 
 # =========================================================
@@ -36,8 +50,6 @@ if not FIRECRAWL_API:
     print("\nERROR: FIRECRAWL_API NOT FOUND")
 
     result = {
-        "bank_name": BANK_NAME,
-        "bank_id": BANK_ID,
         "success": False,
         "error": "FIRECRAWL_API NOT FOUND"
     }
@@ -51,13 +63,13 @@ else:
     error_message = ""
 
     # =====================================================
-    # RETRY SYSTEM
+    # RETRIES
     # =====================================================
 
-    for attempt in range(1, 4):
+    for attempt in range(1, MAX_RETRIES + 1):
 
         print("\n" + "-" * 80)
-        print(f"ATTEMPT: {attempt}/3")
+        print(f"ATTEMPT {attempt}/{MAX_RETRIES}")
         print("-" * 80)
 
         try:
@@ -70,22 +82,43 @@ else:
                 },
                 json={
                     "url": BANK_URL,
+
+                    # FULL WEBSITE
+
                     "formats": ["markdown"],
+
+                    # IMPORTANT
+                    # DO NOT CUT CONTENT
+
                     "onlyMainContent": False,
-                    "waitFor": 10000
+
+                    # WAIT JS
+
+                    "waitFor": WAIT_FOR,
+
+                    # REMOVE CACHE
+
+                    "skipTlsVerification": False
                 },
-                timeout=60
+                timeout=TIMEOUT
             )
 
             # =================================================
-            # DEBUG
+            # STATUS
             # =================================================
 
             print("\nSTATUS CODE:")
             print(response.status_code)
 
-            print("\nRAW RESPONSE:\n")
-            print(response.text[:3000])
+            # =================================================
+            # RAW RESPONSE
+            # =================================================
+
+            raw_text = response.text
+
+            print("\nRAW RESPONSE PREVIEW:\n")
+
+            print(raw_text[:3000])
 
             # =================================================
             # CHECK STATUS
@@ -110,7 +143,7 @@ else:
             markdown = data.get("data", {}).get("markdown", "")
 
             # =================================================
-            # CHECK MARKDOWN
+            # CHECK EMPTY
             # =================================================
 
             if not markdown:
@@ -131,11 +164,98 @@ else:
 
             print("\nSCRAPE SUCCESS")
 
-            print(f"\nMARKDOWN SIZE: {len(markdown)}")
+            print(f"\nFULL MARKDOWN SIZE: {len(markdown)}")
 
-            print("\nFIRST 5000 CHARS:\n")
+            # =================================================
+            # SEARCH CURRENCIES
+            # =================================================
 
-            print(markdown[:5000])
+            print("\nSEARCHING CURRENCIES...\n")
+
+            for word in [
+                "USD",
+                "EUR",
+                "RUB",
+                "CNY",
+                "KZT",
+                "ДОЛЛАР",
+                "РУБЛЬ",
+                "ЕВРО"
+            ]:
+
+                found = word in markdown.upper()
+
+                print(f"{word}: {found}")
+
+            # =================================================
+            # SAVE FULL MARKDOWN
+            # =================================================
+
+            with open(
+                "full_markdown.txt",
+                "w",
+                encoding="utf-8"
+            ) as f:
+
+                f.write(markdown)
+
+            print("\nFULL WEBSITE SAVED -> full_markdown.txt")
+
+            # =================================================
+            # TRY FIND CURRENCY SECTION
+            # =================================================
+
+            currency_words = [
+                "USD",
+                "EUR",
+                "RUB",
+                "CNY",
+                "KZT",
+                "курс",
+                "обмен",
+                "валют",
+                "currency"
+            ]
+
+            found_section = False
+
+            for word in currency_words:
+
+                index = markdown.lower().find(word.lower())
+
+                if index != -1:
+
+                    found_section = True
+
+                    start = max(0, index - 1500)
+
+                    end = min(len(markdown), index + 5000)
+
+                    section = markdown[start:end]
+
+                    print("\n" + "=" * 80)
+                    print(f"FOUND SECTION USING: {word}")
+                    print("=" * 80)
+
+                    print(section)
+
+                    with open(
+                        "currency_section.txt",
+                        "w",
+                        encoding="utf-8"
+                    ) as f:
+
+                        f.write(section)
+
+                    print(
+                        "\nCURRENCY SECTION SAVED -> currency_section.txt"
+                    )
+
+                    break
+
+            if not found_section:
+
+                print("\nNO CURRENCY SECTION FOUND")
 
             break
 
@@ -160,7 +280,6 @@ else:
             "bank_id": BANK_ID,
             "success": True,
             "markdown_size": len(markdown),
-            "preview": markdown[:2000],
             "timestamp": int(time.time())
         }
 
@@ -175,7 +294,7 @@ else:
         }
 
 # =========================================================
-# SAVE RESULT
+# SAVE RESULT JSON
 # =========================================================
 
 with open("result.json", "w", encoding="utf-8") as f:
@@ -188,7 +307,7 @@ with open("result.json", "w", encoding="utf-8") as f:
     )
 
 # =========================================================
-# PRINT RESULT
+# FINAL
 # =========================================================
 
 print("\n" + "=" * 80)
