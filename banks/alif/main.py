@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import time
+import re
 
 # =========================================================
 # FIRECRAWL API
@@ -17,10 +18,6 @@ BANK_NAME = "Алиф Бонк"
 
 BANK_ID = "alif"
 
-# IMPORTANT:
-# RU VERSION OF WEBSITE
-# BECAUSE CURRENCY SECTION EXISTS THERE
-
 BANK_URL = "https://alif.tj/ru"
 
 # =========================================================
@@ -29,7 +26,7 @@ BANK_URL = "https://alif.tj/ru"
 
 MAX_RETRIES = 3
 
-WAIT_FOR = 15000
+WAIT_FOR = 10000
 
 TIMEOUT = 60
 
@@ -62,6 +59,8 @@ else:
 
     error_message = ""
 
+    found_urls = []
+
     # =====================================================
     # RETRIES
     # =====================================================
@@ -82,23 +81,9 @@ else:
                 },
                 json={
                     "url": BANK_URL,
-
-                    # FULL WEBSITE
-
                     "formats": ["markdown"],
-
-                    # IMPORTANT
-                    # DO NOT CUT CONTENT
-
                     "onlyMainContent": False,
-
-                    # WAIT JS
-
-                    "waitFor": WAIT_FOR,
-
-                    # REMOVE CACHE
-
-                    "skipTlsVerification": False
+                    "waitFor": WAIT_FOR
                 },
                 timeout=TIMEOUT
             )
@@ -114,11 +99,9 @@ else:
             # RAW RESPONSE
             # =================================================
 
-            raw_text = response.text
-
             print("\nRAW RESPONSE PREVIEW:\n")
 
-            print(raw_text[:3000])
+            print(response.text[:2000])
 
             # =================================================
             # CHECK STATUS
@@ -135,7 +118,7 @@ else:
                 continue
 
             # =================================================
-            # PARSE JSON
+            # JSON
             # =================================================
 
             data = response.json()
@@ -167,27 +150,6 @@ else:
             print(f"\nFULL MARKDOWN SIZE: {len(markdown)}")
 
             # =================================================
-            # SEARCH CURRENCIES
-            # =================================================
-
-            print("\nSEARCHING CURRENCIES...\n")
-
-            for word in [
-                "USD",
-                "EUR",
-                "RUB",
-                "CNY",
-                "KZT",
-                "ДОЛЛАР",
-                "РУБЛЬ",
-                "ЕВРО"
-            ]:
-
-                found = word in markdown.upper()
-
-                print(f"{word}: {found}")
-
-            # =================================================
             # SAVE FULL MARKDOWN
             # =================================================
 
@@ -202,60 +164,157 @@ else:
             print("\nFULL WEBSITE SAVED -> full_markdown.txt")
 
             # =================================================
-            # TRY FIND CURRENCY SECTION
+            # FIND URLS
             # =================================================
 
-            currency_words = [
-                "USD",
-                "EUR",
-                "RUB",
-                "CNY",
-                "KZT",
-                "курс",
-                "обмен",
-                "валют",
-                "currency"
+            print("\n" + "=" * 80)
+            print("SEARCHING IMPORTANT URLS")
+            print("=" * 80)
+
+            urls = re.findall(
+                r'https://[^\s\)\"]+',
+                markdown
+            )
+
+            unique_urls = list(set(urls))
+
+            keywords = [
+                "currency",
+                "exchange",
+                "rate",
+                "rates",
+                "api",
+                "json",
+                "kurs",
+                "kursi",
+                "valuta",
+                "usd",
+                "eur",
+                "rub"
             ]
 
-            found_section = False
+            for url in unique_urls:
 
-            for word in currency_words:
+                lower = url.lower()
 
-                index = markdown.lower().find(word.lower())
+                if any(word in lower for word in keywords):
 
-                if index != -1:
+                    found_urls.append(url)
 
-                    found_section = True
+                    print("\nFOUND URL:")
+                    print(url)
 
-                    start = max(0, index - 1500)
+            # =================================================
+            # SAVE FOUND URLS
+            # =================================================
 
-                    end = min(len(markdown), index + 5000)
+            with open(
+                "found_urls.json",
+                "w",
+                encoding="utf-8"
+            ) as f:
 
-                    section = markdown[start:end]
+                json.dump(
+                    found_urls,
+                    f,
+                    ensure_ascii=False,
+                    indent=2
+                )
 
-                    print("\n" + "=" * 80)
-                    print(f"FOUND SECTION USING: {word}")
-                    print("=" * 80)
+            print("\nFOUND URLS SAVED -> found_urls.json")
 
-                    print(section)
+            # =================================================
+            # TRY SCRAPING FOUND URLS
+            # =================================================
 
-                    with open(
-                        "currency_section.txt",
-                        "w",
-                        encoding="utf-8"
-                    ) as f:
+            for link in found_urls:
 
-                        f.write(section)
+                print("\n" + "=" * 80)
+                print("TESTING URL:")
+                print(link)
+                print("=" * 80)
 
-                    print(
-                        "\nCURRENCY SECTION SAVED -> currency_section.txt"
+                try:
+
+                    sub_response = requests.post(
+                        "https://api.firecrawl.dev/v1/scrape",
+                        headers={
+                            "Authorization": f"Bearer {FIRECRAWL_API}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "url": link,
+                            "formats": ["markdown"],
+                            "onlyMainContent": False,
+                            "waitFor": WAIT_FOR
+                        },
+                        timeout=TIMEOUT
                     )
 
-                    break
+                    print("\nSUB STATUS:")
+                    print(sub_response.status_code)
 
-            if not found_section:
+                    if sub_response.status_code != 200:
+                        continue
 
-                print("\nNO CURRENCY SECTION FOUND")
+                    sub_data = sub_response.json()
+
+                    sub_markdown = (
+                        sub_data
+                        .get("data", {})
+                        .get("markdown", "")
+                    )
+
+                    if not sub_markdown:
+                        continue
+
+                    print("\nSUB PAGE SIZE:")
+                    print(len(sub_markdown))
+
+                    # =========================================
+                    # SEARCH CURRENCIES
+                    # =========================================
+
+                    currency_found = any(
+                        x in sub_markdown.upper()
+                        for x in [
+                            "USD",
+                            "EUR",
+                            "RUB",
+                            "CNY",
+                            "KZT"
+                        ]
+                    )
+
+                    print("\nHAS CURRENCIES:")
+                    print(currency_found)
+
+                    if currency_found:
+
+                        print("\nFOUND CURRENCY PAGE!")
+
+                        print("\nFIRST 5000 CHARS:\n")
+
+                        print(sub_markdown[:5000])
+
+                        with open(
+                            "currency_page.txt",
+                            "w",
+                            encoding="utf-8"
+                        ) as f:
+
+                            f.write(sub_markdown)
+
+                        print(
+                            "\nCURRENCY PAGE SAVED -> currency_page.txt"
+                        )
+
+                        break
+
+                except Exception as e:
+
+                    print("\nSUB PAGE ERROR:")
+                    print(str(e))
 
             break
 
@@ -264,7 +323,6 @@ else:
             error_message = str(e)
 
             print("\nSCRAPE ERROR:")
-
             print(error_message)
 
             time.sleep(5)
@@ -280,6 +338,7 @@ else:
             "bank_id": BANK_ID,
             "success": True,
             "markdown_size": len(markdown),
+            "found_urls": len(found_urls),
             "timestamp": int(time.time())
         }
 
@@ -294,7 +353,7 @@ else:
         }
 
 # =========================================================
-# SAVE RESULT JSON
+# SAVE RESULT
 # =========================================================
 
 with open("result.json", "w", encoding="utf-8") as f:
