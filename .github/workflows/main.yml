@@ -1,13 +1,19 @@
-name: Alif Test
+name: test
 
 on:
   workflow_dispatch:
 
 jobs:
   test:
+
     runs-on: ubuntu-latest
 
+    env:
+      FIRECRAWL_API: ${{ secrets.FIRECRAWL_API }}
+      OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
+
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -20,6 +26,4 @@ jobs:
         run: pip install requests
 
       - name: Run Script
-        env:
-          FIRECRAWL_API: ${{ secrets.FIRECRAWL_API }}
         run: python banks/alif/main.py
