@@ -9,7 +9,6 @@ import copy
 # =========================================================
 
 FIRECRAWL_API = os.getenv("FIRECRAWL_API")
-
 OPENROUTER_API = os.getenv("OPENROUTER_API")
 
 # =========================================================
@@ -115,7 +114,7 @@ def count_found(data):
     return total
 
 # =========================================================
-# FIRECRAWL
+# SCRAPE
 # =========================================================
 
 def scrape(url):
@@ -125,6 +124,8 @@ def scrape(url):
     print("=" * 80)
 
     for attempt in range(3):
+
+        print(f"\nATTEMPT {attempt+1}/3")
 
         try:
 
@@ -140,13 +141,15 @@ def scrape(url):
                     "onlyMainContent": False,
                     "waitFor": 10000
                 },
-                timeout=60
+                timeout=120
             )
 
             print("\nSTATUS:")
             print(response.status_code)
 
             if response.status_code != 200:
+
+                print("\nBAD STATUS")
 
                 time.sleep(5)
 
@@ -167,6 +170,8 @@ def scrape(url):
                 time.sleep(5)
 
                 continue
+
+            print("\nSCRAPE SUCCESS")
 
             print(f"\nMARKDOWN SIZE: {len(markdown)}")
 
@@ -198,39 +203,49 @@ def scrape(url):
 # =========================================================
 
 SECTION_PROMPT = """
-You are extracting ONLY the exchange rate section from a bank website.
+You are extracting ONLY the REAL currency exchange section from a bank website.
 
-IMPORTANT:
+STRICT RULES:
 - Return ONLY raw text
 - DO NOT explain
 - DO NOT summarize
 - DO NOT output JSON
 
+IMPORTANT:
+Find REAL exchange rates.
+
+The text MUST contain things like:
+
+| USD | 9.25 | 9.35 |
+| RUB | 0.12 | 0.13 |
+| EUR | 10.70 | 10.91 |
+
 IGNORE:
-- menus
-- contacts
 - news
+- menus
 - cards
 - loans
 - commissions
 - limits
+- banners
 
 IMPORTANT:
-Find text containing:
-USD
-EUR
-RUB
-CNY
-KZT
-
-Return maximum 4000 characters.
+Return ONLY the exchange rate section.
 
 TEXT:
 """
 
 def find_currency_section(markdown):
 
-    markdown = markdown[:10000]
+    # =====================================================
+    # VERY IMPORTANT
+    # =====================================================
+
+    markdown = markdown[:40000]
+
+    print("\n" + "=" * 80)
+    print("SEARCHING CURRENCY SECTION")
+    print("=" * 80)
 
     for model in MODELS:
 
@@ -238,7 +253,9 @@ def find_currency_section(markdown):
         print(f"SECTION MODEL: {model}")
         print("=" * 80)
 
-        for attempt in range(2):
+        for attempt in range(3):
+
+            print(f"\nMODEL ATTEMPT {attempt+1}/3")
 
             try:
 
@@ -257,21 +274,27 @@ def find_currency_section(markdown):
                                 "role": "user",
                                 "content":
                                     SECTION_PROMPT
+                                    + "\n\n"
                                     + markdown
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 1200
+                        "max_tokens": 2000
                     },
-                    timeout=120
+                    timeout=180
                 )
 
                 data = response.json()
 
                 print("\nOPENROUTER RESPONSE:")
-                print(json.dumps(data)[:1000])
+                print(json.dumps(data)[:1500])
 
                 if "choices" not in data:
+
+                    print("\nNO CHOICES")
+
+                    time.sleep(5)
+
                     continue
 
                 text = (
@@ -281,9 +304,13 @@ def find_currency_section(markdown):
                 )
 
                 print("\nSECTION RESULT:\n")
-                print(text[:3000])
+                print(text[:5000])
 
-                if len(text) > 100:
+                if (
+                    "USD" in text
+                    or "EUR" in text
+                    or "RUB" in text
+                ):
 
                     with open(
                         "currency_section.txt",
@@ -312,7 +339,7 @@ def find_currency_section(markdown):
 
     print("\nFALLBACK TO RAW MARKDOWN")
 
-    return markdown[:10000]
+    return markdown[:40000]
 
 # =========================================================
 # AI STAGE 2
@@ -325,23 +352,41 @@ STRICT RULES:
 - Return ONLY JSON
 - Never explain
 - Never invent values
+- Ignore years
 - Ignore percentages
 - Ignore limits
 - Ignore commissions
-- Ignore years
 - Ignore phone numbers
+
+IMPORTANT:
+Extract ONLY REAL currency table values.
 
 IMPORTANT:
 If currency missing -> "0.0000"
 
-FORMAT:
+OUTPUT FORMAT:
 
 {
-  "USD": {"buy":"0.0000","sell":"0.0000"},
-  "EUR": {"buy":"0.0000","sell":"0.0000"},
-  "RUB": {"buy":"0.0000","sell":"0.0000"},
-  "CNY": {"buy":"0.0000","sell":"0.0000"},
-  "KZT": {"buy":"0.0000","sell":"0.0000"}
+  "USD": {
+    "buy":"0.0000",
+    "sell":"0.0000"
+  },
+  "EUR": {
+    "buy":"0.0000",
+    "sell":"0.0000"
+  },
+  "RUB": {
+    "buy":"0.0000",
+    "sell":"0.0000"
+  },
+  "CNY": {
+    "buy":"0.0000",
+    "sell":"0.0000"
+  },
+  "KZT": {
+    "buy":"0.0000",
+    "sell":"0.0000"
+  }
 }
 
 TEXT:
@@ -351,6 +396,10 @@ def extract_rates(text):
 
     best = copy.deepcopy(EMPTY)
 
+    print("\n" + "=" * 80)
+    print("EXTRACTING RATES")
+    print("=" * 80)
+
     for model in MODELS:
 
         print("\n" + "=" * 80)
@@ -358,6 +407,8 @@ def extract_rates(text):
         print("=" * 80)
 
         for attempt in range(3):
+
+            print(f"\nEXTRACT ATTEMPT {attempt+1}/3")
 
             try:
 
@@ -375,21 +426,28 @@ def extract_rates(text):
                             {
                                 "role": "user",
                                 "content":
-                                    JSON_PROMPT + text
+                                    JSON_PROMPT
+                                    + "\n\n"
+                                    + text
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 500
+                        "max_tokens": 700
                     },
-                    timeout=120
+                    timeout=180
                 )
 
                 data = response.json()
 
                 print("\nOPENROUTER RESPONSE:")
-                print(json.dumps(data)[:1000])
+                print(json.dumps(data)[:1500])
 
                 if "choices" not in data:
+
+                    print("\nNO CHOICES")
+
+                    time.sleep(5)
+
                     continue
 
                 raw = (
@@ -405,10 +463,12 @@ def extract_rates(text):
                 raw = raw.replace("```", "")
 
                 start = raw.find("{")
-
                 end = raw.rfind("}") + 1
 
                 if start == -1:
+
+                    print("\nNO JSON FOUND")
+
                     continue
 
                 parsed = json.loads(raw[start:end])
@@ -435,25 +495,25 @@ def extract_rates(text):
     return best
 
 # =========================================================
-# MAIN
+# PROCESS BANK
 # =========================================================
 
-print("\n" + "=" * 80)
-print(BANK["name"])
-print("=" * 80)
+def process_bank(bank):
 
-markdown = scrape(BANK["website"])
+    print("\n" + "=" * 80)
+    print(bank["name"])
+    print("=" * 80)
 
-if not markdown:
+    markdown = scrape(bank["website"])
 
-    final = {
-        "bank_name": BANK["name"],
-        "bank_id": BANK["id"],
-        "success": False,
-        "currencies": copy.deepcopy(EMPTY)
-    }
+    if not markdown:
 
-else:
+        return {
+            "bank_name": bank["name"],
+            "bank_id": bank["id"],
+            "success": False,
+            "currencies": copy.deepcopy(EMPTY)
+        }
 
     section = find_currency_section(markdown)
 
@@ -463,12 +523,19 @@ else:
 
     print(f"\nFINAL FOUND: {count_found(currencies)}/5")
 
-    final = {
-        "bank_name": BANK["name"],
-        "bank_id": BANK["id"],
+    return {
+        "bank_name": bank["name"],
+        "bank_id": bank["id"],
         "success": True,
-        "currencies": currencies
+        "currencies": currencies,
+        "found": count_found(currencies)
     }
+
+# =========================================================
+# RUN
+# =========================================================
+
+final = process_bank(BANK)
 
 # =========================================================
 # SAVE RESULT
@@ -501,4 +568,4 @@ print("\nRESULT SAVED -> result.json")
 
 print("=" * 80)
 
-print("\nDONE")
+print("\nDONE")2000
