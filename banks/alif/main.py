@@ -41,6 +41,8 @@ TIMEOUT = 60
 
 MAX_RETRIES = 3
 
+CHUNK_SIZE = 5000
+
 # =========================================================
 # VALIDATION
 # =========================================================
@@ -124,8 +126,16 @@ def count_found(data):
 
     return total
 
+
+def split_chunks(text, size):
+
+    return [
+        text[i:i+size]
+        for i in range(0, len(text), size)
+    ]
+
 # =========================================================
-# SCRAPE FULL WEBSITE
+# SCRAPE
 # =========================================================
 
 def scrape_full_website():
@@ -160,8 +170,6 @@ def scrape_full_website():
 
             if response.status_code != 200:
 
-                print("\nBAD STATUS")
-
                 time.sleep(5)
 
                 continue
@@ -175,8 +183,6 @@ def scrape_full_website():
             )
 
             if not markdown:
-
-                print("\nEMPTY MARKDOWN")
 
                 time.sleep(5)
 
@@ -211,59 +217,65 @@ def scrape_full_website():
 
 # =========================================================
 # AI STAGE 1
-# FIND CURRENCY SECTION
+# FIND BEST CHUNK
 # =========================================================
 
 SECTION_PROMPT = """
-You are extracting ONLY the exchange rate section from a bank website.
-
-STRICT RULES:
-- Return ONLY raw text
-- No explanations
-- No markdown
-- No JSON
-- Ignore menus
-- Ignore cards
-- Ignore loans
-- Ignore contacts
-- Ignore banners
-- Ignore advertisements
+Find ONLY text containing REAL exchange rates.
 
 IMPORTANT:
-Find ONLY text related to:
+- Return ONLY raw text
+- No explanations
+- No JSON
+- Ignore menus
+- Ignore banners
+- Ignore loans
+- Ignore cards
+- Ignore commissions
+- Ignore limits
+
+Find:
 USD
 EUR
 RUB
 CNY
 KZT
-exchange rates
-currency rates
-buy/sell rates
 
-Return maximum 3000 characters.
+IMPORTANT:
+Return ONLY section with REAL numeric rates.
 
 TEXT:
 """
 
 def find_currency_section(markdown):
 
-    markdown = markdown[:40000]
+    chunks = split_chunks(markdown, CHUNK_SIZE)
 
-    for model in MODELS:
+    print("\n" + "=" * 80)
+    print(f"TOTAL CHUNKS: {len(chunks)}")
+    print("=" * 80)
+
+    best_section = ""
+
+    for chunk_index, chunk in enumerate(chunks):
 
         print("\n" + "=" * 80)
-        print(f"SECTION MODEL: {model}")
+        print(f"CHECKING CHUNK {chunk_index+1}/{len(chunks)}")
         print("=" * 80)
 
-        for attempt in range(2):
+        for model in MODELS:
+
+            print(f"\nMODEL: {model}")
 
             try:
 
                 response = requests.post(
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers={
-                        "Authorization": f"Bearer {OPENROUTER_API}",
-                        "Content-Type": "application/json"
+                        "Authorization":
+                            f"Bearer {OPENROUTER_API}",
+                        "Content-Type":
+                            "application/json"
                     },
                     json={
                         "model": model,
@@ -271,17 +283,19 @@ def find_currency_section(markdown):
                             {
                                 "role": "user",
                                 "content":
-                                    SECTION_PROMPT
-                                    + markdown
+                                    SECTION_PROMPT + chunk
                             }
                         ],
                         "temperature": 0,
-                        "max_tokens": 1200
+                        "max_tokens": 800
                     },
                     timeout=120
                 )
 
                 data = response.json()
+
+                print("\nOPENROUTER RESPONSE:")
+                print(json.dumps(data)[:1000])
 
                 if "choices" not in data:
                     continue
@@ -293,19 +307,24 @@ def find_currency_section(markdown):
                 )
 
                 print("\nSECTION RESULT:\n")
+                print(text[:2000])
 
-                print(text[:3000])
+                # =====================================
+                # CHECK CURRENCIES
+                # =====================================
 
-                if any(
-                    x in text.upper()
-                    for x in [
-                        "USD",
-                        "EUR",
-                        "RUB",
-                        "CNY",
-                        "KZT"
-                    ]
-                ):
+                found = 0
+
+                for cur in CURRENCIES:
+
+                    if cur in text.upper():
+                        found += 1
+
+                print(f"\nFOUND CURRENCIES: {found}")
+
+                if found >= 2:
+
+                    best_section = text
 
                     with open(
                         "currency_section.txt",
@@ -326,9 +345,9 @@ def find_currency_section(markdown):
                 print("\nSECTION ERROR:")
                 print(str(e))
 
-            time.sleep(5)
+            time.sleep(3)
 
-    return markdown[:3000]
+    return best_section
 
 # =========================================================
 # AI STAGE 2
@@ -336,24 +355,21 @@ def find_currency_section(markdown):
 # =========================================================
 
 JSON_PROMPT = """
-Extract REAL exchange rates against TJS.
+Extract REAL bank exchange rates against TJS.
 
 STRICT RULES:
 - Return ONLY JSON
-- No explanations
-- No markdown
+- Never explain
 - Never invent values
-- Use ONLY numbers from text
-- Ignore percentages
 - Ignore limits
-- Ignore commissions
-- Ignore years
+- Ignore percentages
 - Ignore phone numbers
+- Ignore years
 
 IMPORTANT:
 If currency missing -> "0.0000"
 
-OUTPUT FORMAT:
+FORMAT:
 
 {
   "USD": {
@@ -385,83 +401,88 @@ def extract_rates(section):
 
     best = copy.deepcopy(EMPTY)
 
+    if not section:
+
+        return best
+
     for model in MODELS:
 
         print("\n" + "=" * 80)
         print(f"EXTRACT MODEL: {model}")
         print("=" * 80)
 
-        for attempt in range(3):
+        try:
 
-            try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization":
+                        f"Bearer {OPENROUTER_API}",
+                    "Content-Type":
+                        "application/json"
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content":
+                                JSON_PROMPT + section
+                        }
+                    ],
+                    "temperature": 0,
+                    "max_tokens": 500
+                },
+                timeout=120
+            )
 
-                response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {OPENROUTER_API}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content":
-                                    JSON_PROMPT
-                                    + section
-                            }
-                        ],
-                        "temperature": 0,
-                        "max_tokens": 500
-                    },
-                    timeout=120
-                )
+            data = response.json()
 
-                data = response.json()
+            print("\nOPENROUTER RESPONSE:")
+            print(json.dumps(data)[:1000])
 
-                if "choices" not in data:
-                    continue
+            if "choices" not in data:
+                continue
 
-                raw = (
-                    data["choices"][0]
-                    ["message"]
-                    ["content"]
-                )
+            raw = (
+                data["choices"][0]
+                ["message"]
+                ["content"]
+            )
 
-                print("\nRAW AI:\n")
+            print("\nRAW AI:\n")
+            print(raw)
 
-                print(raw)
+            raw = raw.replace("```json", "")
+            raw = raw.replace("```", "")
 
-                raw = raw.replace("```json", "")
-                raw = raw.replace("```", "")
+            start = raw.find("{")
 
-                start = raw.find("{")
+            end = raw.rfind("}") + 1
 
-                end = raw.rfind("}") + 1
+            if start == -1:
+                continue
 
-                if start == -1:
-                    continue
+            parsed = json.loads(raw[start:end])
 
-                parsed = json.loads(raw[start:end])
+            cleaned = clean_json(parsed)
 
-                cleaned = clean_json(parsed)
+            found = count_found(cleaned)
 
-                found = count_found(cleaned)
+            print(f"\nFOUND: {found}/5")
 
-                print(f"\nFOUND: {found}/5")
+            if found > count_found(best):
+                best = cleaned
 
-                if found > count_found(best):
-                    best = cleaned
+            if found >= 2:
+                return cleaned
 
-                if found >= 2:
-                    return cleaned
+        except Exception as e:
 
-            except Exception as e:
+            print("\nEXTRACT ERROR:")
+            print(str(e))
 
-                print("\nEXTRACT ERROR:")
-                print(str(e))
-
-            time.sleep(5)
+        time.sleep(3)
 
     return best
 
