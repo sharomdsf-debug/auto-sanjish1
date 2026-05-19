@@ -1,9 +1,18 @@
 import requests
 import json
 import os
+import time
+
+# ======================================================
+# API
+# ======================================================
 
 FIRECRAWL_API = os.getenv("FIRECRAWL_API")
 OPENROUTER_API = os.getenv("OPENROUTER_API")
+
+# ======================================================
+# CONFIG
+# ======================================================
 
 URL = "https://alif.tj/ru"
 
@@ -39,13 +48,20 @@ response = requests.post(
     timeout=300
 )
 
+print("STATUS:")
+print(response.status_code)
+
 data = response.json()
 
 markdown = data["data"]["markdown"]
 
-print("MARKDOWN SIZE:")
+print("=" * 80)
+print("MARKDOWN SIZE")
+print("=" * 80)
+
 print(len(markdown))
 
+# SAVE FULL TEXT
 with open("full_markdown.txt", "w", encoding="utf-8") as f:
     f.write(markdown)
 
@@ -59,50 +75,105 @@ print("=" * 80)
 print("ASKING AI")
 print("=" * 80)
 
-response = requests.post(
-    "https://openrouter.ai/api/v1/chat/completions",
-    headers={
-        "Authorization": f"Bearer {OPENROUTER_API}",
-        "Content-Type": "application/json"
-    },
-    json={
-        "model": MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": PROMPT + "\n\n" + markdown
-            }
-        ]
-    },
-    timeout=300
-)
+answer = None
 
-print("STATUS:")
-print(response.status_code)
+# БЕҲАД КӮШИШ МЕКУНАД
+for attempt in range(1000):
 
-raw = response.text
+    print(f"ATTEMPT {attempt + 1}")
 
-print("=" * 80)
-print("RAW RESPONSE")
-print("=" * 80)
+    try:
 
-print(raw[:5000])
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": MODEL,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": PROMPT + "\n\n" + markdown
+                    }
+                ],
+                "temperature": 0
+            },
+            timeout=300
+        )
 
-data = json.loads(raw)
+        print("STATUS:")
+        print(response.status_code)
 
-answer = data["choices"][0]["message"]["content"]
+        raw = response.text
 
-print("=" * 80)
-print("AI ANSWER")
-print("=" * 80)
+        print("=" * 80)
+        print("RAW RESPONSE")
+        print("=" * 80)
 
-print(answer)
+        print(raw[:3000])
 
-with open("answer.txt", "w", encoding="utf-8") as f:
-    f.write(answer)
+        data = json.loads(raw)
 
-print("ANSWER SAVED -> answer.txt")
+        # ==========================================
+        # SUCCESS
+        # ==========================================
+
+        if "choices" in data:
+
+            answer = data["choices"][0]["message"]["content"]
+
+            print("=" * 80)
+            print("AI ANSWER")
+            print("=" * 80)
+
+            print(answer)
+
+            with open("answer.txt", "w", encoding="utf-8") as f:
+                f.write(answer)
+
+            print("ANSWER SAVED -> answer.txt")
+
+            break
+
+        # ==========================================
+        # RATE LIMIT
+        # ==========================================
+
+        else:
+
+            print("=" * 80)
+            print("NO CHOICES / RATE LIMITED")
+            print("=" * 80)
+
+            print(data)
+
+            print("WAITING 30 SECONDS...")
+
+            time.sleep(30)
+
+    except Exception as e:
+
+        print("=" * 80)
+        print("ERROR")
+        print("=" * 80)
+
+        print(e)
+
+        print("WAITING 30 SECONDS...")
+
+        time.sleep(30)
+
+# ======================================================
+# FINAL
+# ======================================================
 
 print("=" * 80)
 print("DONE")
 print("=" * 80)
+
+if answer:
+    print(answer)
+else:
+    print("NO ANSWER")
