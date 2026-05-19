@@ -1,15 +1,20 @@
 import requests
 import json
+import re
 import os
 import time
-import re
 
 # =========================================================
 # API
 # =========================================================
 
-FIRECRAWL_API = os.getenv("FIRECRAWL_API")
 OPENROUTER_API = os.getenv("OPENROUTER_API")
+
+# =========================================================
+# MODEL
+# =========================================================
+
+MODEL = "deepseek/deepseek-v4-flash:free"
 
 # =========================================================
 # BANK
@@ -18,14 +23,8 @@ OPENROUTER_API = os.getenv("OPENROUTER_API")
 BANK = {
     "name": "Алиф Бонк",
     "id": "alif",
-    "website": "https://alif.tj/ru"
+    "url": "https://alif.tj/ru"
 }
-
-# =========================================================
-# MODEL
-# =========================================================
-
-MODEL = "deepseek/deepseek-chat-v3-0324:free"
 
 # =========================================================
 # EMPTY
@@ -40,88 +39,66 @@ EMPTY = {
 }
 
 # =========================================================
+# PROMPT
+# =========================================================
+
+PROMPT = """
+Аз ин матни калон танҳо қурби асъорро пайдо кун.
+
+Танҳо ҳамон қисми қурбҳоро баргардон.
+
+JSON лозим нест.
+Шарҳ надеҳ.
+
+Матн:
+"""
+
+# =========================================================
 # SCRAPE
 # =========================================================
 
 def scrape():
 
     print("=" * 80)
-    print(f"SCRAPING: {BANK['website']}")
+    print("SCRAPING:", BANK["url"])
     print("=" * 80)
 
-    for attempt in range(3):
+    response = requests.get(
+        BANK["url"],
+        timeout=120,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
 
-        print(f"\nATTEMPT {attempt+1}/3")
+    print("STATUS:")
+    print(response.status_code)
 
-        try:
+    html = response.text
 
-            response = requests.post(
-                "https://api.firecrawl.dev/v1/scrape",
-                headers={
-                    "Authorization": f"Bearer {FIRECRAWL_API}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "url": BANK["website"],
-                    "formats": ["markdown"],
-                    "onlyMainContent": False,
-                    "waitFor": 10000
-                },
-                timeout=180
-            )
+    print("HTML SIZE:")
+    print(len(html))
 
-            print("\nSTATUS:")
-            print(response.status_code)
+    with open("full_markdown.txt", "w", encoding="utf-8") as f:
+        f.write(html)
 
-            data = response.json()
+    print("FULL WEBSITE SAVED -> full_markdown.txt")
 
-            markdown = data.get("data", {}).get("markdown", "")
-
-            print("\nMARKDOWN SIZE:")
-            print(len(markdown))
-
-            with open("full_markdown.txt", "w", encoding="utf-8") as f:
-                f.write(markdown)
-
-            print("\nFULL WEBSITE SAVED -> full_markdown.txt")
-
-            return markdown
-
-        except Exception as e:
-
-            print("\nSCRAPE ERROR:")
-            print(str(e))
-
-        time.sleep(5)
-
-    return ""
+    return html
 
 # =========================================================
-# PROMPT
-# =========================================================
-
-PROMPT = """
-Аз ин матни калон танҳо қисми қурби асъорро баргардон.
-
-Ягон шарҳ надеҳ.
-Фақат ҳамон қисми қурбҳоро навис.
-
-TEXT:
-"""
-
-# =========================================================
-# AI
+# ASK AI
 # =========================================================
 
 def ask_ai(markdown):
 
-    print("\n" + "=" * 80)
+    print("=" * 80)
     print("ASKING AI")
     print("=" * 80)
 
     for attempt in range(3):
 
-        print(f"\nATTEMPT {attempt+1}/3")
+        print(f"ATTEMPT {attempt+1}/3")
 
         try:
 
@@ -139,67 +116,71 @@ def ask_ai(markdown):
                             "content": PROMPT + markdown
                         }
                     ],
-                    "temperature": 0,
-                    "max_tokens": 1000
+                    "temperature": 0
                 },
                 timeout=300
             )
 
-            print("\nSTATUS:")
+            print("STATUS:")
             print(response.status_code)
-
-            raw = response.text
-
-            print("\nRAW RESPONSE:")
-            print(raw[:2000])
 
             data = response.json()
 
-            if "choices" not in data:
+            print("RAW RESPONSE:")
+            print(json.dumps(data, ensure_ascii=False)[:2000])
 
-                print("\nNO CHOICES")
+            if "choices" not in data:
+                print("NO CHOICES")
+                time.sleep(5)
                 continue
 
             content = data["choices"][0]["message"]["content"]
 
             if not content:
-
-                print("\nEMPTY CONTENT")
+                print("EMPTY CONTENT")
+                time.sleep(5)
                 continue
 
-            print("\nAI RESULT:")
+            print("=" * 80)
+            print("AI FOUND THIS:")
+            print("=" * 80)
+
             print(content)
 
             return content
 
         except Exception as e:
 
-            print("\nAI ERROR:")
-            print(str(e))
+            print("ERROR:")
+            print(e)
 
         time.sleep(5)
 
     return ""
 
 # =========================================================
-# PARSE
+# EXTRACT RATES
 # =========================================================
 
-def parse_rates(text):
+def extract_rates(text):
 
     result = json.loads(json.dumps(EMPTY))
 
     patterns = {
-        "USD": r"USD\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
-        "EUR": r"EUR\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
-        "RUB": r"RUB\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
-        "CNY": r"CNY\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)",
-        "KZT": r"KZT\s*\|\s*([0-9.]+)\s*\|\s*([0-9.]+)"
+        "USD": r"USD.*?(\d+\.\d+).*?(\d+\.\d+)",
+        "EUR": r"EUR.*?(\d+\.\d+).*?(\d+\.\d+)",
+        "RUB": r"RUB.*?(\d+\.\d+).*?(\d+\.\d+)",
+        "CNY": r"CNY.*?(\d+\.\d+).*?(\d+\.\d+)",
+        "KZT": r"KZT.*?(\d+\.\d+).*?(\d+\.\d+)"
     }
 
     for currency, pattern in patterns.items():
 
-        match = re.search(pattern, text)
+        match = re.search(
+            pattern,
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
 
         if match:
 
@@ -218,14 +199,9 @@ print("=" * 80)
 
 markdown = scrape()
 
-if not markdown:
-
-    print("\nSCRAPE FAILED")
-    exit()
-
 ai_text = ask_ai(markdown)
 
-currencies = parse_rates(ai_text)
+currencies = extract_rates(ai_text)
 
 final = {
     "bank_name": BANK["name"],
@@ -234,11 +210,15 @@ final = {
     "currencies": currencies
 }
 
-print("\n" + "=" * 80)
+print("=" * 80)
 print("FINAL RESULT")
 print("=" * 80)
 
-print(json.dumps(final, ensure_ascii=False, indent=2))
+print(json.dumps(
+    final,
+    ensure_ascii=False,
+    indent=2
+))
 
 with open("result.json", "w", encoding="utf-8") as f:
 
@@ -249,5 +229,6 @@ with open("result.json", "w", encoding="utf-8") as f:
         indent=2
     )
 
-print("\nRESULT SAVED -> result.json")
-print("\nDONE")
+print("RESULT SAVED -> result.json")
+
+print("DONE")
