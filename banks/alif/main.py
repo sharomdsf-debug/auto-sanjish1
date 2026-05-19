@@ -47,12 +47,12 @@ def extract_prices(text):
     return data["choices"][0]["message"]["content"]
 
 def save_results(text, answer):
-    os.makedirs("results", exist_ok=True)
+    os.makedirs("banks/alif/results", exist_ok=True)
     result = {
         "raw_table": text,
         "ai_answer": answer
     }
-    with open("results/output.json", "w", encoding="utf-8") as f:
+    with open("banks/alif/results/output.json", "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     print("💾 Натиҷа сабт шуд!")
 
