@@ -1,35 +1,39 @@
-name: Alif Bank
+name: Scrape Currency Rates
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * *'   # Ҳар рӯз соати 6
+  workflow_dispatch:        # Дастӣ низ
 
 jobs:
-  run:
+  scrape:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Python насб
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
-      - name: Install requests
-        run: pip install requests
+      - name: Китобхонаҳо насб
+        run: |
+          pip install playwright requests
+          playwright install chromium
+          playwright install-deps chromium
 
-      - name: Run scraper
+      - name: Scrape иҷро
         env:
-          FIRECRAWL_API: ${{ secrets.FIRECRAWL_API }}
-          OPENROUTER_API: ${{ secrets.OPENROUTER_API }}
-        run: python banks/alif/main.py
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          WEBSITE_URL: "https://alif.tj"
+        run: python scrape.py
 
-      - name: Upload answer
-        uses: actions/upload-artifact@v4
-        with:
-          name: result
-          path: |
-            answer.txt
-            full_markdown.txt
+      - name: Натиҷаро commit кун
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add results/output.json
+          git commit -m "✅ Қурбҳо навшуданд: $(date)" || echo "Тағйирот нест"
+          git push
