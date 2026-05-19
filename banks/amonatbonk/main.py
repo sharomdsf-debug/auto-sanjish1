@@ -9,9 +9,9 @@ def scrape():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(URL, wait_until="networkidle")
-        page.wait_for_selector("table", timeout=15000)
-        table = page.query_selector("table")
+        page.goto(URL, wait_until="domcontentloaded")
+        page.wait_for_selector("table.table", timeout=40000)
+        table = page.query_selector("table.table")
         text = table.inner_text()
         browser.close()
         print("✅ Матн:")
