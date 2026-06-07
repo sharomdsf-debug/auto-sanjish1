@@ -2,13 +2,12 @@
   "bank_name": "Матин",
   "bank_id": "matin",
   "website": "https://matin.tj/",
-  "scraped_at": "07.06.2026 05:13:35",
+  "scraped_at": "07.06.2026 14:33:03",
   "data": {
-    "title": "",
-    "body_text": "",
+    "title": "504 Gateway Time-out",
+    "body_text": "504 Gateway Time-out\nnginx/1.29.3",
     "tables": [],
     "api_responses": [],
     "exchange_related": []
-  },
-  "error": "Page.goto: net::ERR_CONNECTION_TIMED_OUT at https://matin.tj/\nCall log:\n  - navigating to \"https://matin.tj/\", waiting until \"networkidle\"\n"
+  }
 }
