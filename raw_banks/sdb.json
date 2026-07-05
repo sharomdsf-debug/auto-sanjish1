@@ -2,14 +2,14 @@
   "bank_name": "Бонки рушди Тоҷикистон",
   "bank_id": "sdb",
   "website": "https://brt.tj/",
-  "scraped_at": "05.07.2026 04:34:30",
+  "scraped_at": "05.07.2026 14:17:00",
   "data": {
     "title": "",
     "body_text": "",
     "tables": [],
     "api_responses": [
       {
-        "url": "https://node-sber1-az1-23.jivosite.com/widget/status/2589764/517ShIP5rJ?rnd=0.9326826144322354",
+        "url": "https://node-sber1-az1-23.jivosite.com/widget/status/2589764/517ShIP5rJ?rnd=0.8013377976171213",
         "body": "{\"premium\":true,\"maintenance\":false,\"config_updated_ts\":1743670822,\"agents\":[]}"
       },
       {
