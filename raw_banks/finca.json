@@ -2,9 +2,9 @@
   "bank_name": "FINCA",
   "bank_id": "finca",
   "website": "https://finca.tj/",
-  "scraped_at": "23.07.2026 03:56:59",
+  "scraped_at": "23.07.2026 14:44:07",
   "data": {
-    "title": "One moment, please...",
+    "title": "Loading https://finca.tj/",
     "body_text": "Please wait while your request is being verified...",
     "tables": [],
     "api_responses": [],
