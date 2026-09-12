@@ -2,10 +2,10 @@
   "bank_name": "Амонатбонк",
   "bank_id": "amonatbonk",
   "website": "https://amonatbonk.tj/",
-  "scraped_at": "11.09.2026 16:24:48",
+  "scraped_at": "12.09.2026 04:30:47",
   "data": {
-    "title": "504 Gateway Time-out",
-    "body_text": "504 Gateway Time-out\nnginx",
+    "title": "502 Bad Gateway",
+    "body_text": "502 Bad Gateway\nnginx",
     "tables": [],
     "api_responses": [],
     "exchange_related": []
