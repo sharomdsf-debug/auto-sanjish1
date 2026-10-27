@@ -2,10 +2,10 @@
   "bank_name": "ICB",
   "bank_id": "icb",
   "website": "https://icb.tj/",
-  "scraped_at": "27.10.2026 05:11:04",
+  "scraped_at": "27.10.2026 18:19:21",
   "data": {
     "title": "The URL you requested has been blocked",
-    "body_text": "block\nWeb Page Blocked!\n\nThe page cannot be displayed. Please contact the administrator for additional information.\n\nURL: icb.tj/\n\nClient IP: 20.55.223.182\nAttack ID: 20000051\nMessage ID: 000308961559",
+    "body_text": "block\nWeb Page Blocked!\n\nThe page cannot be displayed. Please contact the administrator for additional information.\n\nURL: icb.tj/\n\nClient IP: 20.169.53.177\nAttack ID: 20000051\nMessage ID: 000309271628",
     "tables": [],
     "api_responses": [],
     "exchange_related": []
