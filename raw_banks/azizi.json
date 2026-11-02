@@ -2,7 +2,7 @@
   "bank_name": "Азизи-Молия",
   "bank_id": "azizi",
   "website": "https://azizimoliya.tj/",
-  "scraped_at": "02.11.2026 06:15:25",
+  "scraped_at": "02.11.2026 22:01:44",
   "data": {
     "title": "",
     "body_text": "",
@@ -10,5 +10,5 @@
     "api_responses": [],
     "exchange_related": []
   },
-  "error": "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://azizimoliya.tj/\nCall log:\n  - navigating to \"https://azizimoliya.tj/\", waiting until \"networkidle\"\n"
+  "error": "Page.goto: net::ERR_CONNECTION_TIMED_OUT at https://azizimoliya.tj/\nCall log:\n  - navigating to \"https://azizimoliya.tj/\", waiting until \"networkidle\"\n"
 }

@@ -2,7 +2,7 @@
   "bank_name": "Тиҷорат Бонк",
   "bank_id": "tijorat",
   "website": "https://tejaratbank.tj/",
-  "scraped_at": "02.11.2026 06:02:12",
+  "scraped_at": "02.11.2026 21:46:25",
   "data": {
     "title": "",
     "body_text": "",
@@ -10,5 +10,5 @@
     "api_responses": [],
     "exchange_related": []
   },
-  "error": "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://tejaratbank.tj/\nCall log:\n  - navigating to \"https://tejaratbank.tj/\", waiting until \"networkidle\"\n"
+  "error": "Page.goto: net::ERR_CONNECTION_TIMED_OUT at https://tejaratbank.tj/\nCall log:\n  - navigating to \"https://tejaratbank.tj/\", waiting until \"networkidle\"\n"
 }
