@@ -2,15 +2,23 @@
   "bank_name": "Ориёнбонк",
   "bank_id": "oriyonbank",
   "website": "https://oriyonbonk.tj/",
-  "scraped_at": "24.11.2026 09:51:54",
+  "scraped_at": "24.11.2026 22:22:39",
   "data": {
     "title": "Attention Required! | Cloudflare",
-    "body_text": "Sorry, you have been blocked\nYou are unable to access oriyonbonk.tj\nWhy have I been blocked?\n\nThis website is using a security service to protect itself from online attacks. The action you just performed triggered the security solution. There are several actions that could trigger this block including submitting a certain word or phrase, a SQL command or malformed data.\n\nWhat can I do to resolve this?\n\nYou can email the site owner to let them know you were blocked. Please include what you were doing when this page came up and the Cloudflare Ray ID found at the bottom of this page.\n\nCloudflare Ray ID: a5f7848ffd6a0c31 • Your IP: Click to reveal • Performance & security by Cloudflare",
+    "body_text": "Sorry, you have been blocked\nYou are unable to access oriyonbonk.tj\nWhy have I been blocked?\n\nThis website is using a security service to protect itself from online attacks. The action you just performed triggered the security solution. There are several actions that could trigger this block including submitting a certain word or phrase, a SQL command or malformed data.\n\nWhat can I do to resolve this?\n\nYou can email the site owner to let them know you were blocked. Please include what you were doing when this page came up and the Cloudflare Ray ID found at the bottom of this page.\n\nCloudflare Ray ID: a5fbd04e1cc5f3a3 • Your IP: Click to reveal • Performance & security by Cloudflare",
     "tables": [],
     "api_responses": [
       {
         "url": "https://oriyonbonk.tj/cdn-cgi/speculation",
         "body": "{\"tag\":\"cf-speed-brain\",\"prefetch\":[{\"eagerness\":\"conservative\",\"source\":\"document\",\"where\":{\"and\":[{\"href_matches\":\"/*\",\"relative_to\":\"document\"}]}}]}"
+      },
+      {
+        "url": "https://oriyonbonk.tj/cdn-cgi/challenge-platform/h/g/jsd/oneshot/b9d4778be3d9/0.8791650816754855:1795554929:_GIgDoKJB0At59yoDMAPIAN2k4vOdgB5oPiA3RuzpmY/a5fbd04e1cc5f3a3",
+        "body": ""
+      },
+      {
+        "url": "https://oriyonbonk.tj/cdn-cgi/challenge-platform/h/g/jsd/oneshot/b9d4778be3d9/0.8791650816754855:1795554929:_GIgDoKJB0At59yoDMAPIAN2k4vOdgB5oPiA3RuzpmY/a5fbd04e1cc5f3a3",
+        "body": ""
       }
     ],
     "exchange_related": []
